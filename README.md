@@ -26,7 +26,7 @@ It woul
 
 Installation
 ------------
-There should be downloadable binary files for some environments under the releases page.
+There should be downloadable binary files for some environments under the [releases page](https://github.com/8051Enthusiast/biodiff/releases).
 Alternatively, you can also install this using `cargo` by doing `cargo install biodiff`.
 
 You can also execute directly using code from this repository by executing `cargo run --release -- file_a file_b`.
