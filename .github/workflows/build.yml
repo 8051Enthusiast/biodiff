@@ -55,6 +55,12 @@ jobs:
           cargo install cargo-strip
           cargo strip
       - uses: actions/upload-artifact@v2
+        if: matrix.os != 'windows-latest'
         with:
-          name: biodiff
+          name: 'biodiff-${{ matrix.os }}'
           path: target/release/biodiff
+      - uses: actions/upload-artifact@v2
+        if: matrix.os == 'windows-latest'
+        with:
+          name: 'biodiff-${{ matrix.os }}'
+          path: target/release/biodiff.exe
