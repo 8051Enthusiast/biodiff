@@ -1,0 +1,57 @@
+name: Build
+on: [push, pull_request]
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: "${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}"
+      - run: cargo test
+  build:
+    name: Build Binary
+    needs:
+      - test
+    runs-on: "${{ matrix.os }}"
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: ''
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: ''
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - run: |
+        cargo test --release
+        cargo build --release
+      - run: |
+        cargo install cargo-strip
+        cargo strip
+      - uses: actions/upload-artifact@v2
+        with:
+          name: biodiff
+          path: target/release/biodiff
