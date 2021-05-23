@@ -276,7 +276,7 @@ pub fn align_front<F: MatchFunc + Clone>(
         let first = real_end.first().unwrap();
         xaddr = first.xaddr;
         yaddr = first.yaddr;
-        if sender.send(AlignedMessage::Prepend(end)).is_err() {
+        if sender.send(AlignedMessage::Prepend(real_end)).is_err() {
             return;
         }
     }
