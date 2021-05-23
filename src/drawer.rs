@@ -147,12 +147,9 @@ impl CursorState {
     /// Jump the curser relative to current position.
     /// Returns relative change in (column, rows)
     pub fn jump(&self, diff: isize) -> (isize, isize) {
-        eprintln!("{}", diff);
         let front_column = self.cursor_pos.0 as isize + diff;
-        eprintln!("{}", self.cursor_pos.0);
         let row_change = front_column.div_euclid(self.size.0 as isize);
         let column_change = front_column.rem_euclid(self.size.0 as isize) - self.cursor_pos.0 as isize;
-        eprintln!("{} {}", column_change, row_change);
         (column_change, row_change)
     }
     /// gets the column of the cursor
