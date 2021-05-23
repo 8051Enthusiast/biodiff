@@ -1,0 +1,50 @@
+Biodiff
+=======
+
+Compare binary files using alignment algorithms.
+
+Keys:
+ * left/right/up/down arrow: Move Cursor
+ * 'h', 'j', 'k', 'l', Page Up/Down: Move view without moving cursor
+ * 'a', 's', 'd' (Unaligned View): Choose active cursor left/both/right
+ * space: Jump to the next difference (but at least half a page)
+ * F1: View Help
+ * F2: View Unaligned
+ * F3: View Aligned
+ * F4: Alignment Algorithm Settings
+ * F6: Go to address
+
+Unaligned View
+--------------
+This is the binary diff view that just shows both files contiguously
+and is the mode that the viewer starts in. You can align at the
+cursor by pressing F3 and go into the Aligned View.
+
+The left view and right view can by moved independently by first
+choosing active views with pressing the 'a'/'s'/'d' for left/both/right
+respectively.
+
+Aligned View
+------------
+This view attempts to show the bytes of the file such that same bytes
+of one file are aligned to the same bytes of another file.
+
+In the standard blockwise mode, the alignment will be calculated
+starting from the cursor in both directions, so it is advisable to
+do this once at least one aligned part has been found in the unaligned
+view (although it might also work without doing this).
+
+When entering this view, it will be blank for a short while alignment
+is calculated. In blockwise mode (see the algorithm settings window
+help for more information on this), the blocks will be dynamically
+added at the front and end.
+
+The unaligned view can be entered again by pressing F2, or alignment
+with different settings can be applied by again pressing F3.
+
+Alignment Algorithm Settings
+----------------------------
+It is possible to change various parameters, and for smaller files
+align them as a whole without first having to search for an alignment.
+Do note that this will result in significant RAM usage for larger files
+(> 32k) which could grind your computer to a halt.

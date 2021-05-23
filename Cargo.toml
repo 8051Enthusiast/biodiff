@@ -1,0 +1,19 @@
+[package]
+name = "biodiff"
+version = "0.1.0"
+authors = ["8051Enthusiast <8051Enthusiast@protonmail.com>"]
+edition = "2018"
+license = "MIT"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bio = "0.34"
+crossterm = "0.19"
+crossbeam-utils = "0.8"
+cursive_buffered_backend = "0.5"
+
+[dependencies.cursive]
+version = "0.16"
+default-features = false
+features = ["crossterm-backend"]

@@ -1,0 +1,63 @@
+Algorithm Settings
+==================
+
+When aligning two sequences, one essentially tries to arrange two
+sequences by inserting gaps into them so that there are as similar
+as possible.
+
+This is done by giving each possible arrangement a score. For example,
+given two strings 'GACATATTAC' and 'GCATTTTATTAC' one can align them
+like this
+        GACATATTAC
+        GCATTTTATTAC
+but one can also align them like this
+        GACA   TATTAC
+        G CATTTTATTAC
+
+The latter attains fewer mismatches between the upper symbols and the
+lower symbols by inserting gaps, thus has a higher score.
+
+Scoring works like this: two same bytes at the same position
+get a given score (Match), two differing bytes at the same position
+get another score (Mismatch) and for each gap, one has the Open Gap
+penalty plus one Extend Gap penalty for each byte in the gap. Note
+that there will be no Match/Mismatch scores counted in the gaps,
+since the bytes are only on one side.
+
+Modes
+-----
+Currently, there are three modes: Local, Global and Blockwise.
+
+Note that local and global alignment can take considerable amounts
+of memory and it is not recommended to run it in non-banded mode
+for files greater than around 64k.
+
+* Global alignment takes the two whole files and tries to find the
+  optimal alignment such that both sequences start and end at the
+  same place.
+
+* Local alignment also aligns the whole file at once, but the
+  sequences do not have to be aligned in their whole. For example
+     ACATGA TAGG
+         GACTAGGATATTA
+  would still be a good alignment and not starting/ending at the same
+  place does not result in gap penalties.
+
+* Blockwise alignment starts from the current cursor position and
+  gradually aligns the sequences from there in both directions, taking
+  only into consideration the next `blocksize` bytes. This means that
+  gaps larger than that will generally result in failures to align
+  the bytes thereafter, but this mode allows one to look locally at one
+  place within larger files and as long as the gaps are small enough
+  works good enough.
+
+Banded Alignment
+----------------
+Banded Alignment is a heuristic to speed up alignment. This works by
+first looking at subsequences of k bytes and matching them with those
+of the other sequence, and then aligning the other bytes using a sparse
+matching algorithm with a given window size.
+
+This is much faster, but not perfect and might also fail in certain
+circumstances (for local/global alignment, this will just show no bytes,
+and for blockwise, it will stop aligning at the place where it fails).
