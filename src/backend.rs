@@ -10,7 +10,7 @@ use crossterm::{execute, queue};
 use cursive::{theme, Printer};
 use std::{
     convert::{TryFrom, TryInto},
-    io::Write,
+    io::{Cursor, Write},
 };
 use std::{io::Stdout, sync::mpsc::Sender};
 
@@ -190,6 +190,7 @@ impl Effect {
 #[derive(Debug)]
 pub struct Cross {
     stdout: Stdout,
+    buffer: Cursor<Vec<u8>>,
     prev_color: Option<CrossColor>,
     prev_effect: Option<Attribute>,
 }
@@ -199,6 +200,7 @@ impl Cross {
     fn new_uninit() -> Self {
         Cross {
             stdout: std::io::stdout(),
+            buffer: Cursor::new(Vec::new()),
             prev_color: None,
             prev_effect: None,
         }
@@ -249,7 +251,7 @@ pub fn quit_with_error<E: std::error::Error, Out>(premsg: &'static str) -> impl 
 impl Backend for Cross {
     fn set_line(&mut self, line: usize) {
         queue!(
-            self.stdout,
+            self.buffer,
             cursor::MoveTo(
                 0,
                 u16::try_from(line).unwrap_or_else(quit_with_error("line out of range"))
@@ -262,7 +264,7 @@ impl Backend for Cross {
 
     fn set_pos(&mut self, column: usize, line: usize) {
         queue!(
-            self.stdout,
+            self.buffer,
             cursor::MoveTo(
                 u16::try_from(column).unwrap_or_else(quit_with_error("column out of range")),
                 u16::try_from(line).unwrap_or_else(quit_with_error("line out of range"))
@@ -276,7 +278,7 @@ impl Backend for Cross {
         // try to optimize by not printing the color if it hasn't changed
         if Some(attribute) != self.prev_effect {
             queue!(
-                self.stdout,
+                self.buffer,
                 style::SetAttribute(attribute),
                 style::SetBackgroundColor(CrossColor::Black)
             )
@@ -289,11 +291,11 @@ impl Backend for Cross {
         }
         let cross_color = color.to_cross();
         if Some(cross_color) != self.prev_color {
-            queue!(self.stdout, style::SetForegroundColor(cross_color),)
+            queue!(self.buffer, style::SetForegroundColor(cross_color),)
                 .unwrap_or_else(quit_with_error("Could not write out text"));
             self.prev_color = Some(cross_color);
         }
-        queue!(self.stdout, style::Print(text))
+        queue!(self.buffer, style::Print(text))
             .unwrap_or_else(quit_with_error("Could not write out text"));
     }
 
@@ -308,7 +310,7 @@ impl Backend for Cross {
         match amount {
             isize::MIN..=-1 => {
                 queue!(
-                    self.stdout,
+                    self.buffer,
                     terminal::ScrollDown(
                         u16::try_from(-amount)
                             .unwrap_or_else(quit_with_error("scroll out of range"))
@@ -318,7 +320,7 @@ impl Backend for Cross {
             }
             1..=isize::MAX => {
                 queue!(
-                    self.stdout,
+                    self.buffer,
                     terminal::ScrollUp(
                         u16::try_from(amount)
                             .unwrap_or_else(quit_with_error("scroll out of range"))
@@ -331,6 +333,12 @@ impl Backend for Cross {
     }
 
     fn refresh(&mut self) {
+        let _ = self.buffer.flush();
+        let mut buffer = Cursor::new(Vec::new());
+        std::mem::swap(&mut buffer, &mut self.buffer);
+        self.stdout
+            .write_all(&buffer.into_inner())
+            .unwrap_or_else(quit_with_error("Could not write to stdout"));
         let _ = self.stdout.flush();
     }
 
@@ -341,7 +349,7 @@ impl Backend for Cross {
     }
 
     fn clear(&mut self) {
-        queue!(self.stdout, terminal::Clear(terminal::ClearType::All),)
+        queue!(self.buffer, terminal::Clear(terminal::ClearType::All),)
             .unwrap_or_else(quit_with_error("Could not clear screen"))
     }
 }
