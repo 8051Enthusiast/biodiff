@@ -62,52 +62,6 @@ impl DoubleHexLine {
     }
 }
 
-/// Prints a whole screen of hex data
-pub fn print_doublehex_screen<B: Backend>(content: &[DoubleHexLine], backend: &mut B) {
-    for (i, line) in content.iter().enumerate() {
-        // we offset because of the title bar
-        line.print(backend, i + 1);
-    }
-}
-
-/// Scrolls the hex view and rewrites the missing content, which should be more efficient
-pub fn print_doublehex_scrolled<B: Backend>(
-    content: &[DoubleHexLine],
-    backend: &mut B,
-    rows: usize,
-    scroll_amount: isize,
-) {
-    if scroll_amount == 0 {
-        return;
-    }
-    if !backend.can_scroll() || scroll_amount.abs() as usize > content.len() {
-        return print_doublehex_screen(content, backend);
-    }
-    backend.scroll(scroll_amount);
-    for line in if scroll_amount > 0 {
-        (rows - scroll_amount as usize)..rows
-    } else {
-        0..(-scroll_amount) as usize
-    } {
-        content[line].print(backend, line + 1);
-    }
-}
-
-/// returns the number of columns that are displayed on a given display width
-/// Goes in steps of 8 above 24, steps of 4 for 8 - 24 and steps of 1 for < 8
-pub fn get_doublehex_columns(columns: usize) -> usize {
-    if columns <= CONSTANT_OVERHEAD {
-        return 0;
-    }
-    let max_col = (columns - CONSTANT_OVERHEAD) / (SIZE_PER_BYTE * 2);
-    if max_col < 8 {
-        max_col
-    } else if max_col < 24 {
-        max_col / 4 * 4
-    } else {
-        max_col / 8 * 8
-    }
-}
 
 const VERTICAL_CURSOR_PAD: isize = 2;
 
@@ -227,99 +181,165 @@ impl CursorActive {
     }
 }
 
-/// Refreshes the cursor position of a DoubleHex view.
-/// at_cursor contains the bytes at the cursor
-///
-/// Note: The old cursor needs to be deleted first
-/// by calling this function with CursorActive::None
-/// with the old position.
-pub fn set_doublehex_cursor<B: Backend>(
-    backend: &mut B,
-    cursor: &CursorState,
-    active: CursorActive,
-    at_cursor: (Option<u8>, Option<u8>),
-) {
-    // the cursor is displayed with reverse video
-    let effect = |is_active| {
-        if is_active {
-            Effect::Inverted
-        } else {
-            Effect::None
-        }
-    };
 
-    // left cursor
-    let left_x = ADDR_SIZE + cursor.get_x() * SIZE_PER_BYTE;
-    let left_effect = effect(active.is_left());
-    let left_color = color_from_bytes(at_cursor.0, at_cursor.1);
-    // note again that the title bar is skipped
-    backend.set_pos(left_x, cursor.get_y() + 1);
-    // we cut of the last byte of the disp_hex so that the space is not reverse video'd
-    backend.append_text(&disp_hex(at_cursor.0)[..2], left_color, left_effect);
-
-    // right cursor
-    let right_x =
-        2 * ADDR_SIZE + (cursor.get_x() + cursor.get_size_x()) * SIZE_PER_BYTE + MIDDLE_PAD.len();
-    let right_effect = effect(active.is_right());
-    let right_color = color_from_bytes(at_cursor.1, at_cursor.0);
-    backend.set_pos(right_x, cursor.get_y() + 1);
-    backend.append_text(&disp_hex(at_cursor.1)[..2], right_color, right_effect);
+pub enum DisplayMode {
+    HexOnly,
+}
+pub struct DoubleHexContext {
+    pub cursor: CursorState,
+    pub mode: DisplayMode,
 }
 
-/// prints the line at the top containing the filenames and status
-pub fn print_title_line<B: Backend>(
-    printer: &mut B,
-    title: &str,
-    left: &str,
-    right: &str,
-    hexcols: usize,
-) {
-    // function for truncating the string on the left when it is too long
-    // also inserts an < to indicate that it was truncated
-    let shorten = |s: &str| -> String {
-        if s.len() > SIZE_PER_BYTE * hexcols {
-            s.chars()
-                .rev()
-                .take(SIZE_PER_BYTE * hexcols - 2)
-                .collect::<Vec<_>>()
-                .into_iter()
-                .chain(std::iter::once('<'))
-                .rev()
-                .collect()
-        } else {
-            s.to_string()
+impl DoubleHexContext {
+    pub fn new(size: (usize, usize)) -> Self {
+        let cursor = CursorState::new(size);
+        DoubleHexContext {
+            cursor,
+            mode: DisplayMode::HexOnly,
         }
-    };
-    // the title is displayed above the addresses
-    let short_title = title.chars().take(ADDR_SIZE - 1).collect::<String>();
-    let short_left = shorten(left);
-    let short_right = shorten(right);
+    }
+    /// Prints a whole screen of hex data
+    pub fn print_doublehex_screen<B: Backend>(&self, content: &[DoubleHexLine], backend: &mut B) {
+        for (i, line) in content.iter().enumerate() {
+            // we offset because of the title bar
+            line.print(backend, i + 1);
+        }
+    }
 
-    let titlebar = format!(
-        "{:addrsize$} {:>hexsize$} {}{:addrsize$} {:>hexsize$} ",
-        short_title,
-        short_left,
-        MIDDLE_PAD,
-        " ",
-        short_right,
-        addrsize = ADDR_SIZE - 1,
-        hexsize = hexcols * SIZE_PER_BYTE - 1
-    );
-    printer.set_line(0);
-    printer.append_text(&titlebar, Color::HexSame, Effect::Inverted);
-}
+    /// Scrolls the hex view and rewrites the missing content, which should be more efficient
+    pub fn print_doublehex_scrolled<B: Backend>(
+        &self,
+        content: &[DoubleHexLine],
+        backend: &mut B,
+        scroll_amount: isize,
+    ) {
+        let rows = self.cursor.get_size_y();
+        if scroll_amount == 0 {
+            return;
+        }
+        if !backend.can_scroll() || scroll_amount.abs() as usize > content.len() {
+            return self.print_doublehex_screen(content, backend);
+        }
+        backend.scroll(scroll_amount);
+        for line in if scroll_amount > 0 {
+            (rows - scroll_amount as usize)..rows
+        } else {
+            0..(-scroll_amount) as usize
+        } {
+            content[line].print(backend, line + 1);
+        }
+    }
 
-/// Prints the bottom text containing key information
-pub fn print_bottom_line<B: Backend>(printer: &mut B, hexcols: usize, line: usize) {
-    const BOTTOM_TEXT: &str = "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto";
-    printer.set_line(line);
-    printer.append_text(
-        &format!(
-            "{:width$}",
-            BOTTOM_TEXT,
-            width = hexcols * 2 * SIZE_PER_BYTE + CONSTANT_OVERHEAD
-        ),
-        Color::HexSame,
-        Effect::Inverted,
-    );
+    /// returns the number of columns that are displayed on a given display width
+    /// Goes in steps of 8 above 24, steps of 4 for 8 - 24 and steps of 1 for < 8
+    pub fn get_doublehex_columns(&self, columns: usize) -> usize {
+        if columns <= CONSTANT_OVERHEAD {
+            return 0;
+        }
+        let max_col = (columns - CONSTANT_OVERHEAD) / (SIZE_PER_BYTE * 2);
+        if max_col < 8 {
+            max_col
+        } else if max_col < 24 {
+            max_col / 4 * 4
+        } else {
+            max_col / 8 * 8
+        }
+    }
+    /// Refreshes the cursor position of a DoubleHex view.
+    /// at_cursor contains the bytes at the cursor
+    ///
+    /// Note: The old cursor needs to be deleted first
+    /// by calling this function with CursorActive::None
+    /// with the old position.
+    pub fn set_doublehex_cursor<B: Backend>(
+        &self,
+        backend: &mut B,
+        active: CursorActive,
+        at_cursor: (Option<u8>, Option<u8>),
+    ) {
+        // the cursor is displayed with reverse video
+        let effect = |is_active| {
+            if is_active {
+                Effect::Inverted
+            } else {
+                Effect::None
+            }
+        };
+
+        let cursor = &self.cursor;
+        // left cursor
+        let left_x = ADDR_SIZE + cursor.get_x() * SIZE_PER_BYTE;
+        let left_effect = effect(active.is_left());
+        let left_color = color_from_bytes(at_cursor.0, at_cursor.1);
+        // note again that the title bar is skipped
+        backend.set_pos(left_x, cursor.get_y() + 1);
+        // we cut of the last byte of the disp_hex so that the space is not reverse video'd
+        backend.append_text(&disp_hex(at_cursor.0)[..2], left_color, left_effect);
+
+        // right cursor
+        let right_x =
+            2 * ADDR_SIZE + (cursor.get_x() + cursor.get_size_x()) * SIZE_PER_BYTE + MIDDLE_PAD.len();
+        let right_effect = effect(active.is_right());
+        let right_color = color_from_bytes(at_cursor.1, at_cursor.0);
+        backend.set_pos(right_x, cursor.get_y() + 1);
+        backend.append_text(&disp_hex(at_cursor.1)[..2], right_color, right_effect);
+    }
+
+    /// prints the line at the top containing the filenames and status
+    pub fn print_title_line<B: Backend>(
+        &self,
+        printer: &mut B,
+        title: &str,
+        left: &str,
+        right: &str,
+    ) {
+        // function for truncating the string on the left when it is too long
+        // also inserts an < to indicate that it was truncated
+        let shorten = |s: &str| -> String {
+            if s.len() > SIZE_PER_BYTE * self.cursor.get_size_x() {
+                s.chars()
+                    .rev()
+                    .take(SIZE_PER_BYTE * self.cursor.get_size_x() - 2)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .chain(std::iter::once('<'))
+                    .rev()
+                    .collect()
+            } else {
+                s.to_string()
+            }
+        };
+        // the title is displayed above the addresses
+        let short_title = title.chars().take(ADDR_SIZE - 1).collect::<String>();
+        let short_left = shorten(left);
+        let short_right = shorten(right);
+
+        let titlebar = format!(
+            "{:addrsize$} {:>hexsize$} {}{:addrsize$} {:>hexsize$} ",
+            short_title,
+            short_left,
+            MIDDLE_PAD,
+            " ",
+            short_right,
+            addrsize = ADDR_SIZE - 1,
+            hexsize = self.cursor.get_size_x() * SIZE_PER_BYTE - 1
+        );
+        printer.set_line(0);
+        printer.append_text(&titlebar, Color::HexSame, Effect::Inverted);
+    }
+
+    /// Prints the bottom text containing key information
+    pub fn print_bottom_line<B: Backend>(&self, printer: &mut B, line: usize) {
+        const BOTTOM_TEXT: &str = "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto";
+        printer.set_line(line);
+        printer.append_text(
+            &format!(
+                "{:width$}",
+                BOTTOM_TEXT,
+                width = self.cursor.get_size_x() * 2 * SIZE_PER_BYTE + CONSTANT_OVERHEAD
+            ),
+            Color::HexSame,
+            Effect::Inverted,
+        );
+    }
 }

@@ -11,14 +11,7 @@ use cursive::{
 use cursive::{traits::Boxable, views::ResizedView, Cursive};
 use cursive_buffered_backend::BufferedBackend;
 
-use crate::{
-    align::{AlignAlgorithm, AlignMode},
-    backend::{send_cross_actions, Action, Cross},
-    dialog,
-    drawer::CursorState,
-    utils::PointedFile,
-    view::{self, Aligned, AlignedMessage},
-};
+use crate::{align::{AlignAlgorithm, AlignMode}, backend::{send_cross_actions, Action, Cross}, dialog, drawer::{CursorState, DoubleHexContext}, utils::PointedFile, view::{self, Aligned, AlignedMessage}};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 type CursiveCallback = Box<dyn Fn(&mut Cursive) + 'static + Send>;
@@ -65,7 +58,7 @@ impl HexView {
         HexView::Unaligned(view::Unaligned::new(
             left,
             right,
-            CursorState::new((16, 16)),
+            DoubleHexContext::new((16, 16)),
         ))
     }
     /// Turns a hexview into an aligned view using the given algorithm parameters
@@ -81,14 +74,12 @@ impl HexView {
             // if the cursor was not placed on any index, we currently do nothing
             // maybe one could think up some better values to align at here or something
             Err(hv) => hv,
-            Ok((left, right, cursor)) => {
-                let cursor = if matches!(algo.mode, AlignMode::Local | AlignMode::Global) {
-                    CursorState::new((cursor.get_size_x(), cursor.get_size_y()))
-                } else {
-                    cursor
+            Ok((left, right, mut dh)) => {
+                if matches!(algo.mode, AlignMode::Local | AlignMode::Global) {
+                    dh.cursor = CursorState::new((dh.cursor.get_size_x(), dh.cursor.get_size_y()))
                 };
                 HexView::Aligned(
-                    view::Aligned::new(left, right, cursor, algo, send.clone()),
+                    view::Aligned::new(left, right, dh, algo, send.clone()),
                     send,
                     recv,
                 )

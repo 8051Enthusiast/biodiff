@@ -9,10 +9,7 @@ use crate::{
     align::{AlignAlgorithm, AlignElement},
     backend::{Action, Backend, Cursiv},
     datastruct::{CompVec, DoubleVec, SignedArray},
-    drawer::{
-        get_doublehex_columns, print_bottom_line, print_doublehex_screen, print_doublehex_scrolled,
-        print_title_line, set_doublehex_cursor, CursorActive, CursorState, DoubleHexLine,
-    },
+    drawer::{CursorActive, DoubleHexContext, DoubleHexLine},
     utils::PointedFile,
 };
 
@@ -21,14 +18,14 @@ pub struct Unaligned {
     data: CompVec<u8>,
     filenames: (String, String),
     index: isize,
-    cursor: CursorState,
+    dh: DoubleHexContext,
     cursor_act: CursorActive,
 }
 
 impl Unaligned {
     /// Creates a new view, with the indexes in the files at the cursor
-    pub fn new(left: PointedFile, right: PointedFile, cursor: CursorState) -> Self {
-        let mut index = -(cursor.get_index() as isize);
+    pub fn new(left: PointedFile, right: PointedFile, dh: DoubleHexContext) -> Self {
+        let mut index = -(dh.cursor.get_index() as isize);
         let mut data = CompVec::new(left.content, right.content);
         index += data.add_left_shift(-(left.index as isize));
         index += data.add_right_shift(-(right.index as isize));
@@ -36,18 +33,18 @@ impl Unaligned {
             data,
             filenames: (left.name, right.name),
             index,
-            cursor,
+            dh,
             cursor_act: CursorActive::Both,
         }
     }
     /// Resizes the view without drawing it, returning if anything changed
     pub fn resize(&mut self, dimensions: (usize, usize)) -> bool {
         let (columns, rows) = dimensions;
-        let hex_col = get_doublehex_columns(columns);
-        let old_dimensions = (self.cursor.get_size_x(), self.cursor.get_size_y());
+        let hex_col = self.dh.get_doublehex_columns(columns);
+        let old_dimensions = (self.dh.cursor.get_size_x(), self.dh.cursor.get_size_y());
         // subtract two for top and bottom bars
         let new_dimensions = (hex_col, rows - 2);
-        self.index += self.cursor.resize(new_dimensions);
+        self.index += self.dh.cursor.resize(new_dimensions);
         (old_dimensions) != new_dimensions
     }
     /// Redraws without checking for resize.
@@ -57,7 +54,7 @@ impl Unaligned {
             printer.clear();
         }
         let content = self.get_content();
-        print_doublehex_screen(&content, printer);
+        self.dh.print_doublehex_screen(&content, printer);
         self.set_cursor(printer, self.cursor_act);
         self.print_bars(printer);
         printer.refresh();
@@ -69,45 +66,33 @@ impl Unaligned {
     }
     /// Paints the cursor at the current position
     fn set_cursor<B: Backend>(&self, printer: &mut B, cursor_act: CursorActive) {
-        let cursor_index = self.index + self.cursor.get_index() as isize;
-        set_doublehex_cursor(
-            printer,
-            &self.cursor,
-            cursor_act,
-            self.data.get(cursor_index),
-        );
+        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        self.dh
+            .set_doublehex_cursor(printer, cursor_act, self.data.get(cursor_index));
     }
     /// Converts the content of the CompVec into DoubleHexLines so they can be displayed
     fn get_content(&self) -> Vec<DoubleHexLine> {
         let mut content = Vec::new();
-        for x in 0..self.cursor.get_size_y() {
+        for x in 0..self.dh.cursor.get_size_y() {
             // address of the nth line
-            let base_addr = (x * self.cursor.get_size_x()) as isize + self.index;
+            let base_addr = (x * self.dh.cursor.get_size_x()) as isize + self.index;
             let address = (
                 self.data.get_left_addr(base_addr),
                 self.data.get_right_addr(base_addr),
             );
             let bytes = self
                 .data
-                .get_range(base_addr..base_addr + self.cursor.get_size_x() as isize);
+                .get_range(base_addr..base_addr + self.dh.cursor.get_size_x() as isize);
             content.push(DoubleHexLine { address, bytes });
         }
         content
     }
     /// Prints the top and bottom bar
     fn print_bars<B: Backend>(&self, printer: &mut B) {
-        print_title_line(
-            printer,
-            " unaligned",
-            &self.filenames.0,
-            &self.filenames.1,
-            self.cursor.get_size_x(),
-        );
-        print_bottom_line(
-            printer,
-            self.cursor.get_size_x(),
-            self.cursor.get_size_y() + 1,
-        );
+        self.dh
+            .print_title_line(printer, " unaligned", &self.filenames.0, &self.filenames.1);
+        self.dh
+            .print_bottom_line(printer, self.dh.cursor.get_size_y() + 1);
     }
 
     /// moves the cursor xdiff down and ydiff to the right,
@@ -122,9 +107,9 @@ impl Unaligned {
         self.set_cursor(printer, CursorActive::None);
         // update cursor if updating the cursor is wanted, otherwise only change the view position
         let diff = if cursor {
-            self.cursor.move_cursor(xdiff, ydiff)
+            self.dh.cursor.move_cursor(xdiff, ydiff)
         } else {
-            self.cursor.get_size_x() as isize * ydiff + xdiff
+            self.dh.cursor.get_size_x() as isize * ydiff + xdiff
         };
         // update the compvec in case the views are moved independently
         let index_diff = match self.cursor_act {
@@ -137,10 +122,11 @@ impl Unaligned {
         // if they are moved independently, we cannot scroll
         if !matches!(self.cursor_act, CursorActive::Both) {
             self.redraw(printer, false);
-        } else if let Some(scroll_amount) = self.cursor.full_row_move(index_diff) {
+        } else if let Some(scroll_amount) = self.dh.cursor.full_row_move(index_diff) {
             // scroll if we can
             let content = self.get_content();
-            print_doublehex_scrolled(&content, printer, self.cursor.get_size_y(), scroll_amount);
+            self.dh
+                .print_doublehex_scrolled(&content, printer, scroll_amount);
             self.set_cursor(printer, self.cursor_act);
             self.print_bars(printer);
             printer.refresh();
@@ -160,11 +146,14 @@ impl Unaligned {
             Action::Right => self.move_around(printer, 1, 0, true),
             Action::RightAlt => self.move_around(printer, 1, 0, false),
             Action::PgDown => {
-                self.move_around(printer, 0, self.cursor.get_size_y() as isize / 2, false)
+                self.move_around(printer, 0, self.dh.cursor.get_size_y() as isize / 2, false)
             }
-            Action::PgUp => {
-                self.move_around(printer, 0, -(self.cursor.get_size_y() as isize) / 2, false)
-            }
+            Action::PgUp => self.move_around(
+                printer,
+                0,
+                -(self.dh.cursor.get_size_y() as isize) / 2,
+                false,
+            ),
             Action::NextDifference => self.jump_next_difference(printer),
             _ => (),
         }
@@ -192,8 +181,8 @@ impl Unaligned {
         }
     }
     pub fn goto_index<B: Backend>(&mut self, printer: &mut B, index: isize) {
-        let address_diff = index - (self.index + self.cursor.get_index() as isize);
-        let (col, row) = self.cursor.jump(address_diff);
+        let address_diff = index - (self.index + self.dh.cursor.get_index() as isize);
+        let (col, row) = self.dh.cursor.jump(address_diff);
         self.move_around(printer, 0, row, false);
         self.move_around(printer, col, 0, true);
     }
@@ -223,8 +212,8 @@ impl Unaligned {
     pub fn jump_next_difference<B: Backend>(&mut self, printer: &mut B) {
         // skip half a page
         let first_address = (self.index
-            + self.cursor.get_index() as isize
-            + (self.cursor.get_size_y() / 2) as isize * self.cursor.get_size_x() as isize)
+            + self.dh.cursor.get_index() as isize
+            + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.get_size_x() as isize)
             .clamp(self.data.bounds().start, self.data.bounds().end - 1);
         let mut target_address = first_address;
         for i in first_address..self.data.bounds().end {
@@ -237,8 +226,8 @@ impl Unaligned {
         self.goto_index(printer, target_address);
     }
     /// Turns the view into most of its parts
-    pub fn destruct(self) -> Result<(PointedFile, PointedFile, CursorState), Self> {
-        let cursor_index = self.index + self.cursor.get_index() as isize;
+    pub fn destruct(self) -> Result<(PointedFile, PointedFile, DoubleHexContext), Self> {
+        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
         // for now we only return if the cursor is at a positions where both indexes are actually
         // inside the file
         if let (Some(laddr), Some(raddr)) = (
@@ -257,7 +246,7 @@ impl Unaligned {
                     content: rvec,
                     index: raddr,
                 },
-                self.cursor,
+                self.dh,
             ))
         } else {
             Err(self)
@@ -285,7 +274,7 @@ pub struct Aligned {
     filenames: (String, String),
     original: (Arc<Vec<u8>>, Arc<Vec<u8>>),
     index: isize,
-    cursor: CursorState,
+    dh: DoubleHexContext,
 }
 
 impl Aligned {
@@ -296,11 +285,11 @@ impl Aligned {
     pub fn new(
         left: PointedFile,
         right: PointedFile,
-        cursor: CursorState,
+        dh: DoubleHexContext,
         algo: &AlignAlgorithm,
         sender: Sender<AlignedMessage>,
     ) -> Self {
-        let index = -(cursor.get_index() as isize);
+        let index = -(dh.cursor.get_index() as isize);
         let data = DoubleVec::new();
         let left_arc = left.content.clone();
         let right_arc = right.content.clone();
@@ -310,21 +299,21 @@ impl Aligned {
             filenames: (left.name, right.name),
             original: (left.content, right.content),
             index,
-            cursor,
+            dh,
         }
     }
     /// Checks whether a given range of indexes overlaps with the indexes currently visible.
     fn is_in_view(&self, range: Range<isize>) -> bool {
-        let self_range =
-            self.index..self.index + (self.cursor.get_size_x() * self.cursor.get_size_y()) as isize;
+        let self_range = self.index
+            ..self.index + (self.dh.cursor.get_size_x() * self.dh.cursor.get_size_y()) as isize;
         !(self_range.start >= range.end || self_range.end <= range.start)
     }
     /// Gets a useful form of the information contained in the alignement data for printing.
     fn get_content(&self) -> Vec<DoubleHexLine> {
         let mut content = Vec::new();
-        for x in 0..self.cursor.get_size_y() {
+        for x in 0..self.dh.cursor.get_size_y() {
             // address of current line to be converted
-            let base_addr = (x * self.cursor.get_size_x()) as isize + self.index;
+            let base_addr = (x * self.dh.cursor.get_size_x()) as isize + self.index;
             let address = self
                 .data
                 .get(base_addr)
@@ -332,7 +321,7 @@ impl Aligned {
                 .unwrap_or_default();
             let bytes = self
                 .data
-                .get_range(base_addr..base_addr + self.cursor.get_size_x() as isize)
+                .get_range(base_addr..base_addr + self.dh.cursor.get_size_x() as isize)
                 .iter()
                 .map(|malignel| {
                     malignel
@@ -346,10 +335,9 @@ impl Aligned {
     }
     /// Paints the cursor at the current position
     fn set_cursor<B: Backend>(&self, printer: &mut B, cursor_act: CursorActive) {
-        let cursor_index = self.index + self.cursor.get_index() as isize;
-        set_doublehex_cursor(
+        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        self.dh.set_doublehex_cursor(
             printer,
-            &self.cursor,
             cursor_act,
             self.data
                 .get(cursor_index)
@@ -360,18 +348,10 @@ impl Aligned {
 
     /// Prints the top and bottom bar.
     fn print_bars<B: Backend>(&self, printer: &mut B) {
-        print_title_line(
-            printer,
-            " aligned",
-            &self.filenames.0,
-            &self.filenames.1,
-            self.cursor.get_size_x(),
-        );
-        print_bottom_line(
-            printer,
-            self.cursor.get_size_x(),
-            self.cursor.get_size_y() + 1,
-        );
+        self.dh
+            .print_title_line(printer, " aligned", &self.filenames.0, &self.filenames.1);
+        self.dh
+            .print_bottom_line(printer, self.dh.cursor.get_size_y() + 1);
     }
 
     /// Moves the cursor xdiff down and ydiff to the right,
@@ -385,14 +365,15 @@ impl Aligned {
     ) {
         self.set_cursor(printer, CursorActive::None);
         let index_diff = if cursor {
-            self.cursor.move_cursor(xdiff, ydiff)
+            self.dh.cursor.move_cursor(xdiff, ydiff)
         } else {
-            self.cursor.get_size_x() as isize * ydiff + xdiff
+            self.dh.cursor.get_size_x() as isize * ydiff + xdiff
         };
         self.index += index_diff;
-        if let Some(scroll_amount) = self.cursor.full_row_move(index_diff) {
+        if let Some(scroll_amount) = self.dh.cursor.full_row_move(index_diff) {
             let content = self.get_content();
-            print_doublehex_scrolled(&content, printer, self.cursor.get_size_y(), scroll_amount);
+            self.dh
+                .print_doublehex_scrolled(&content, printer, scroll_amount);
             self.set_cursor(printer, CursorActive::Both);
             self.print_bars(printer);
             printer.refresh();
@@ -417,10 +398,10 @@ impl Aligned {
     /// Resize the view without printing it, returns whether redrawing is necessary.
     pub fn resize(&mut self, dimensions: (usize, usize)) -> bool {
         let (columns, rows) = dimensions;
-        let hex_col = get_doublehex_columns(columns);
-        let old_dimensions = (self.cursor.get_size_x(), self.cursor.get_size_y());
+        let hex_col = self.dh.get_doublehex_columns(columns);
+        let old_dimensions = (self.dh.cursor.get_size_x(), self.dh.cursor.get_size_y());
         let new_dimensions = (hex_col, rows - 2);
-        self.index += self.cursor.resize(new_dimensions);
+        self.index += self.dh.cursor.resize(new_dimensions);
         (old_dimensions) != new_dimensions
     }
     /// Redraws the current view without checking and updating the view for changes.
@@ -429,7 +410,7 @@ impl Aligned {
             printer.clear();
         }
         let content = self.get_content();
-        print_doublehex_screen(&content, printer);
+        self.dh.print_doublehex_screen(&content, printer);
         self.set_cursor(printer, CursorActive::Both);
         self.print_bars(printer);
         printer.refresh();
@@ -440,8 +421,8 @@ impl Aligned {
         self.redraw(printer, changed);
     }
     pub fn goto_index<B: Backend>(&mut self, printer: &mut B, index: isize) {
-        let address_diff = index - (self.index + self.cursor.get_index() as isize);
-        let (col, row) = self.cursor.jump(address_diff);
+        let address_diff = index - (self.index + self.dh.cursor.get_index() as isize);
+        let (col, row) = self.dh.cursor.jump(address_diff);
         self.move_around(printer, 0, row, false);
         self.move_around(printer, col, 0, true);
     }
@@ -465,8 +446,8 @@ impl Aligned {
     pub fn jump_next_difference<B: Backend>(&mut self, printer: &mut B) {
         // skip half a page
         let first_address = (self.index
-            + self.cursor.get_index() as isize
-            + (self.cursor.get_size_y() / 2) as isize * self.cursor.get_size_x() as isize)
+            + self.dh.cursor.get_index() as isize
+            + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.get_size_x() as isize)
             .clamp(self.data.bounds().start, self.data.bounds().end - 1);
         let mut target_address = first_address;
         for i in first_address..=self.data.bounds().end {
@@ -490,11 +471,14 @@ impl Aligned {
             Action::Right => self.move_around(printer, 1, 0, true),
             Action::RightAlt => self.move_around(printer, 1, 0, false),
             Action::PgDown => {
-                self.move_around(printer, 0, self.cursor.get_size_y() as isize / 2, false)
+                self.move_around(printer, 0, self.dh.cursor.get_size_y() as isize / 2, false)
             }
-            Action::PgUp => {
-                self.move_around(printer, 0, -(self.cursor.get_size_y() as isize) / 2, false)
-            }
+            Action::PgUp => self.move_around(
+                printer,
+                0,
+                -(self.dh.cursor.get_size_y() as isize) / 2,
+                false,
+            ),
             Action::NextDifference => self.jump_next_difference(printer),
             _ => (),
         }
@@ -521,10 +505,12 @@ impl Aligned {
         }
     }
     /// Turn an Aligned view into its part, including information on where it points
-    pub fn destruct(self) -> Result<(PointedFile, PointedFile, CursorState), Self> {
+    pub fn destruct(self) -> Result<(PointedFile, PointedFile, DoubleHexContext), Self> {
         // we return the original view in case the cursor is outside the files
-        match (self.data.get(self.index + self.cursor.get_index() as isize))
-            .map(|a| (a.xaddr, a.yaddr))
+        match (self
+            .data
+            .get(self.index + self.dh.cursor.get_index() as isize))
+        .map(|a| (a.xaddr, a.yaddr))
         {
             Some((xaddr, yaddr)) => Ok((
                 PointedFile {
@@ -537,7 +523,7 @@ impl Aligned {
                     content: self.original.1,
                     index: yaddr,
                 },
-                self.cursor,
+                self.dh,
             )),
             None => Err(self),
         }
