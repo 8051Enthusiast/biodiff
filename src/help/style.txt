@@ -11,6 +11,13 @@ Adds a column alongside the usual hex view which shows the
 byte values as characters if they are in the ASCII range,
 and else displays them as dots.
 
+Vertical Split
+--------------
+Normally, the primary file is shown on the left and the secondary
+one on the right. This option makes it so the split is vertical
+and the primary file is on top and the secondary one on the
+bottom.
+
 Hex Only
 --------
 The default, shows byte values always as their values in base 16.
