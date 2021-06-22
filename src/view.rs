@@ -18,7 +18,7 @@ pub struct Unaligned {
     data: CompVec<u8>,
     filenames: (String, String),
     index: isize,
-    dh: DoubleHexContext,
+    pub dh: DoubleHexContext,
     cursor_act: CursorActive,
 }
 
@@ -274,7 +274,7 @@ pub struct Aligned {
     filenames: (String, String),
     original: (Arc<Vec<u8>>, Arc<Vec<u8>>),
     index: isize,
-    dh: DoubleHexContext,
+    pub dh: DoubleHexContext,
 }
 
 impl Aligned {

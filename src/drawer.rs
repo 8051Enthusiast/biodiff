@@ -73,6 +73,7 @@ fn color_from_mixed_bytes(a: Option<u8>, b: Option<u8>) -> Color {
     }
 }
 
+#[repr(usize)]
 #[derive(Clone, Copy, Debug)]
 pub enum DisplayMode {
     HexOnly,
@@ -262,10 +263,24 @@ impl CursorActive {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Style {
+    pub mode: DisplayMode,
+    pub ascii_col: bool,
+}
+
+impl Default for Style {
+    fn default() -> Self {
+        Style {
+            mode: DisplayMode::HexOnly,
+            ascii_col: false,
+        }
+    }
+}
 
 pub struct DoubleHexContext {
     pub cursor: CursorState,
-    pub mode: DisplayMode,
+    pub style: Style,
 }
 
 impl DoubleHexContext {
@@ -273,14 +288,14 @@ impl DoubleHexContext {
         let cursor = CursorState::new(size);
         DoubleHexContext {
             cursor,
-            mode: DisplayMode::HexOnly,
+            style: Style::default(),
         }
     }
     /// Prints a whole screen of hex data
     pub fn print_doublehex_screen<B: Backend>(&self, content: &[DoubleHexLine], backend: &mut B) {
         for (i, line) in content.iter().enumerate() {
             // we offset because of the title bar
-            line.print(backend, i + 1, self.mode);
+            line.print(backend, i + 1, self.style.mode);
         }
     }
 
@@ -304,7 +319,7 @@ impl DoubleHexContext {
         } else {
             0..(-scroll_amount) as usize
         } {
-            content[line].print(backend, line + 1, self.mode)
+            content[line].print(backend, line + 1, self.style.mode)
         }
     }
 
@@ -314,7 +329,7 @@ impl DoubleHexContext {
         if columns <= CONSTANT_OVERHEAD {
             return 0;
         }
-        let max_col = (columns - CONSTANT_OVERHEAD) / (self.mode.size_per_byte() * 2);
+        let max_col = (columns - CONSTANT_OVERHEAD) / (self.style.mode.size_per_byte() * 2);
         if max_col < 8 {
             max_col
         } else if max_col < 24 {
@@ -346,10 +361,10 @@ impl DoubleHexContext {
 
         let cursor = &self.cursor;
         // left cursor
-        let left_x = ADDR_SIZE + cursor.get_x() * self.mode.size_per_byte();
+        let left_x = ADDR_SIZE + cursor.get_x() * self.style.mode.size_per_byte();
         let left_effect = effect(active.is_left());
-        let left_color = self.mode.color(at_cursor.0, at_cursor.1, self.cursor.get_y() + 1);
-        let left_text = self.mode.disp(at_cursor.0, true);
+        let left_color = self.style.mode.color(at_cursor.0, at_cursor.1, self.cursor.get_y() + 1);
+        let left_text = self.style.mode.disp(at_cursor.0, true);
         // note again that the title bar is skipped
         backend.set_pos(left_x, cursor.get_y() + 1);
         // we cut of the last byte of the disp_hex so that the space is not reverse video'd
@@ -357,11 +372,11 @@ impl DoubleHexContext {
 
         // right cursor
         let right_x = 2 * ADDR_SIZE
-            + (cursor.get_x() + cursor.get_size_x()) * self.mode.size_per_byte()
+            + (cursor.get_x() + cursor.get_size_x()) * self.style.mode.size_per_byte()
             + MIDDLE_PAD.chars().count();
         let right_effect = effect(active.is_right());
-        let right_color = self.mode.color(at_cursor.1, at_cursor.0, self.cursor.get_y() + 1);
-        let right_text = self.mode.disp(at_cursor.1, true);
+        let right_color = self.style.mode.color(at_cursor.1, at_cursor.0, self.cursor.get_y() + 1);
+        let right_text = self.style.mode.disp(at_cursor.1, true);
         backend.set_pos(right_x, cursor.get_y() + 1);
         backend.append_text(&right_text, right_color, right_effect);
     }
@@ -377,10 +392,10 @@ impl DoubleHexContext {
         // function for truncating the string on the left when it is too long
         // also inserts an < to indicate that it was truncated
         let shorten = |s: &str| -> String {
-            if s.len() > self.mode.size_per_byte() * self.cursor.get_size_x() {
+            if s.len() > self.style.mode.size_per_byte() * self.cursor.get_size_x() {
                 s.chars()
                     .rev()
-                    .take(self.mode.size_per_byte() * self.cursor.get_size_x() - 2)
+                    .take(self.style.mode.size_per_byte() * self.cursor.get_size_x() - 2)
                     .collect::<Vec<_>>()
                     .into_iter()
                     .chain(std::iter::once('<'))
@@ -403,7 +418,7 @@ impl DoubleHexContext {
             " ",
             short_right,
             addrsize = ADDR_SIZE - 1,
-            hexsize = self.cursor.get_size_x() * self.mode.size_per_byte() - 1
+            hexsize = self.cursor.get_size_x() * self.style.mode.size_per_byte() - 1
         );
         printer.set_line(0);
         printer.append_text(&titlebar, Color::HexSame, Effect::Inverted);
@@ -418,7 +433,7 @@ impl DoubleHexContext {
                 "{:width$}",
                 BOTTOM_TEXT,
                 width =
-                    self.cursor.get_size_x() * 2 * self.mode.size_per_byte() + CONSTANT_OVERHEAD
+                    self.cursor.get_size_x() * 2 * self.style.mode.size_per_byte() + CONSTANT_OVERHEAD
             ),
             Color::HexSame,
             Effect::Inverted,

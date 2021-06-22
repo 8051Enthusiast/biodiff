@@ -14,6 +14,7 @@ bio = "0.34"
 crossterm = "0.19"
 crossbeam-utils = "0.8"
 cursive_buffered_backend = "0.5"
+unicode-width = "0.1"
 
 [dependencies.cursive]
 version = "0.16"

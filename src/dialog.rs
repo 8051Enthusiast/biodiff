@@ -1,8 +1,10 @@
 use crate::{
     align::{AlignAlgorithm, AlignMode, Banded, DEFAULT_BLOCKSIZE, DEFAULT_KMER, DEFAULT_WINDOW},
+    control::Settings,
+    drawer::{DisplayMode, Style},
     view::{Aligned, Unaligned},
 };
-use cursive::{event::Key, theme::PaletteColor, traits::*, views::*, Cursive};
+use cursive::{event::Key, theme::PaletteColor, traits::*, views::*, Cursive, View};
 use std::{fmt::Display, str::FromStr};
 const TEXT_WIDTH: usize = 6;
 
@@ -105,16 +107,40 @@ fn apply_algorithm(siv: &mut Cursive) {
         );
     } else {
         // AlignAlgorithm is stored in the user data
-        *(siv.user_data().unwrap()) = algorithm;
-        siv.quit();
+        siv.user_data::<Settings>().unwrap().algo = algorithm;
+        close_top_maybe_quit(siv)
     }
 }
 
+fn on_hexview<F, G, T>(siv: &mut Cursive, aligned: F, unaligned: G) -> T
+where
+    F: FnOnce(&mut Aligned) -> T + 'static,
+    G: FnOnce(&mut Unaligned) -> T + 'static,
+{
+    siv.call_on_name("aligned", aligned)
+        .or_else(|| siv.call_on_name("unaligned", unaligned))
+        .expect("Could not find aligned or unaligned view in cursive stack")
+}
+
+fn apply_style(siv: &mut Cursive) {
+    let mut new_style = Style::default();
+    new_style.ascii_col = siv
+        .find_name::<Checkbox>("ascii_col")
+        .expect("Could not find ascii checkbox in settings")
+        .is_checked();
+    siv.user_data::<Settings>()
+        .expect("Could not get align algorithm info from cursive")
+        .style = new_style;
+    on_hexview(siv, move |v| v.dh.style = new_style, move |v| v.dh.style = new_style);
+    close_top_maybe_quit(siv)
+}
+
 /// Creates a dialog box for algorithm settings.
-pub fn algorithm(siv: &mut Cursive) {
-    let algorithm: &mut AlignAlgorithm = siv
-        .user_data()
-        .expect("Could not get align algorithm info from cursive");
+pub fn algorithm(siv: &mut Cursive) -> impl View {
+    let algorithm: &mut AlignAlgorithm = &mut siv
+        .user_data::<Settings>()
+        .expect("Could not get align algorithm info from cursive")
+        .algo;
 
     // various validator functions for the textboxes
     let is_i32 = |s: &str| s.parse::<i32>().is_ok();
@@ -265,18 +291,104 @@ pub fn algorithm(siv: &mut Cursive) {
         .child(Button::new("OK", apply_algorithm))
         .child(Button::new("Cancel", close_top_maybe_quit))
         .child(Button::new("Help", help_window(ALGORITHM_HELP)));
-    siv.add_layer(
-        // catch F1 for help
-        OnEventView::new(
-            Dialog::around(
-                LinearLayout::horizontal()
-                    .child(left_side)
-                    .child(Panel::new(right_side)),
-            )
-            .title("Algorithm Options"),
+    // catch F1 for help
+    OnEventView::new(
+        Dialog::around(
+            LinearLayout::horizontal()
+                .child(left_side)
+                .child(Panel::new(right_side)),
         )
-        .on_event(Key::F1, help_window(ALGORITHM_HELP)),
-    );
+        .title("Algorithm Options"),
+    )
+    .on_event(Key::F1, help_window(ALGORITHM_HELP))
+}
+
+fn number_to_stylemode(x: &usize) -> DisplayMode {
+    match x {
+        0 => DisplayMode::HexOnly,
+        1 => DisplayMode::HexAsciiMix,
+        2 => DisplayMode::Braille,
+        otherwise => panic!(
+            "Unknown item number {} for style displaymode setting",
+            otherwise
+        ),
+    }
+}
+
+pub fn style(siv: &mut Cursive) -> impl View {
+    let on_quit = |s: &mut Cursive| {
+        let old_style = s.user_data::<Settings>().expect("Could not get settings from cursive").style;
+        on_hexview(s, move |v| v.dh.style = old_style, move |v| v.dh.style = old_style);
+        close_top_maybe_quit(s);
+    };
+    let style_settings: Style = siv
+        .user_data::<Settings>()
+        .expect("Could not get style settings from cursive")
+        .style;
+    let left_side = LinearLayout::vertical()
+        .child(
+            ListView::new().child(
+                "Ascii Column:",
+                Checkbox::new()
+                    .with_checked(style_settings.ascii_col)
+                    .on_change(|s, check| {
+                        on_hexview(
+                            s,
+                            move |v| v.dh.style.ascii_col = check,
+                            move |v| v.dh.style.ascii_col = check,
+                        )
+                    })
+                    .with_name("ascii_col"),
+            ),
+        )
+        .child(Button::new("OK", apply_style))
+        .child(Button::new("Cancel", on_quit))
+        .child(Button::new("Help", help_window(ALGORITHM_HELP)));
+    let right_side = SelectView::new()
+        .with_all([("Hex Only", 0usize), ("Hex/Ascii Mixed", 1), ("Braille", 2)])
+        .selected(style_settings.mode as usize)
+        .on_select(|s, t| {
+            let mode = number_to_stylemode(t);
+            on_hexview(
+                s,
+                move |v| v.dh.style.mode = mode,
+                move |v| v.dh.style.mode = mode,
+            )
+        });
+    OnEventView::new(Dialog::around(
+        LinearLayout::horizontal()
+            .child(Panel::new(left_side))
+            .child(Panel::new(right_side)),
+    )
+    .title("Style Settings"))
+    .on_event(Key::F1, help_window(ALGORITHM_HELP))
+    .on_event(Key::Esc, on_quit)
+}
+
+pub fn settings(siv: &mut Cursive) {
+    siv.add_layer(
+        Dialog::around(
+            LinearLayout::vertical()
+                .child(TextView::new("Choose the settings you wish to change"))
+                .child(
+                    SelectView::new()
+                        .with_all([("Algorithm", 0), ("Display Style", 1)])
+                        .on_submit(|s, t| match t {
+                            0 => {
+                                let v = algorithm(s);
+                                s.add_layer(v)
+                            }
+                            1 => {
+                                let v = style(s);
+                                s.add_layer(v)
+                            }
+                            otherwise => panic!("Unknown setting selection index: {}", otherwise),
+                        }),
+                )
+                .child(Button::new("Close", close_top_maybe_quit)),
+        )
+        .title("Settings"),
+    )
 }
 
 pub fn goto(siv: &mut Cursive) {
@@ -289,9 +401,15 @@ pub fn goto(siv: &mut Cursive) {
             .unwrap()
             .map_err(|e| e.to_string())
             .and_then(|pos| {
-                s.call_on_name("aligned", |v: &mut Aligned| v.goto(&mut crate::backend::Dummy{}, right, pos))
-                    .or_else(|| s.call_on_name("unaligned", |v: &mut Unaligned| v.goto(&mut crate::backend::Dummy{}, right, pos)))
-                    .unwrap()
+                s.call_on_name("aligned", |v: &mut Aligned| {
+                    v.goto(&mut crate::backend::Dummy {}, right, pos)
+                })
+                .or_else(|| {
+                    s.call_on_name("unaligned", |v: &mut Unaligned| {
+                        v.goto(&mut crate::backend::Dummy {}, right, pos)
+                    })
+                })
+                .unwrap()
             });
 
         match result {
@@ -336,7 +454,7 @@ pub fn help_window(help_text: &'static str) -> impl Fn(&mut Cursive) {
         siv.add_layer(
             Dialog::around(ScrollView::new(TextView::new(help_text)))
                 .title("Help")
-                .button("Continue", close_top_maybe_quit),
+                .button("Close", close_top_maybe_quit),
         )
     }
 }

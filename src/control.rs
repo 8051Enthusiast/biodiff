@@ -11,7 +11,7 @@ use cursive::{
 use cursive::{traits::Boxable, views::ResizedView, Cursive};
 use cursive_buffered_backend::BufferedBackend;
 
-use crate::{align::{AlignAlgorithm, AlignMode}, backend::{send_cross_actions, Action, Cross}, dialog, drawer::{CursorState, DoubleHexContext}, utils::PointedFile, view::{self, Aligned, AlignedMessage}};
+use crate::{align::{AlignAlgorithm, AlignMode}, backend::{send_cross_actions, Action, Cross}, dialog, drawer::{CursorState, DoubleHexContext, Style}, utils::PointedFile, view::{self, Aligned, AlignedMessage}};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 type CursiveCallback = Box<dyn Fn(&mut Cursive) + 'static + Send>;
@@ -20,21 +20,31 @@ type CursiveCallback = Box<dyn Fn(&mut Cursive) + 'static + Send>;
 /// when opening dialog boxes. This is done because initially, the cursive backend was too flickery.
 /// However, this was fixed by using cursive_buffered_backend, so now this is only a minor optimization.
 pub fn run(x: PointedFile, y: PointedFile) {
-    let mut algo = AlignAlgorithm::default();
+    let mut settings = Settings::default();
     let mut hv = HexView::new(x, y);
     loop {
         let mut cross = Cross::init();
-        let (hv_new, quit) = hv.process_cross(&mut cross, &algo);
+        let (hv_new, quit) = hv.process_cross(&mut cross, &settings);
         hv = hv_new;
         cross.uninit();
-        let (hv_new, algo_new) = match quit {
+        let (hv_new, settings_new) = match quit {
             DelegateEvent::Quit => break,
-            DelegateEvent::OpenDialog(dia) => hv.show_dialog(dia, algo),
-            _ => (hv, algo),
+            DelegateEvent::OpenDialog(dia) => hv.show_dialog(dia, settings),
+            _ => (hv, settings),
         };
         hv = hv_new;
-        algo = algo_new;
+        settings = settings_new;
+        *match hv {
+            HexView::Aligned(ref mut v, _, _) => &mut v.dh.style,
+            HexView::Unaligned(ref mut v) => &mut v.dh.style,
+        } = settings.style;
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Settings {
+    pub algo: AlignAlgorithm,
+    pub style: Style,
 }
 
 /// An enum containing either an aligned or unaligned hexview, without
@@ -110,7 +120,7 @@ impl HexView {
     }
     /// control loop for crossbeam backend, switches the view between aligned and unaligned when
     /// requested and runs event loops
-    fn process_cross(self, cross: &mut Cross, algo: &AlignAlgorithm) -> (Self, DelegateEvent) {
+    fn process_cross(self, cross: &mut Cross, settings: &Settings) -> (Self, DelegateEvent) {
         let mut view = self;
         let mut quit;
         let quit_reason = loop {
@@ -123,7 +133,7 @@ impl HexView {
                 }
                 DelegateEvent::SwitchToAlign => {
                     quit = None;
-                    view.into_aligned(algo)
+                    view.into_aligned(&settings.algo)
                 }
                 DelegateEvent::SwitchToUnalign => {
                     quit = None;
@@ -138,14 +148,14 @@ impl HexView {
     }
     /// Setup a cursive instance and shows a dialog constructed through the callback given in `dialog`.
     ///
-    /// Note that the algorithm is placed into the user_data of the cursive instace and can be modified
+    /// Note that the settings are placed into the user_data of the cursive instace and can be modified
     /// by the callback.
-    fn show_dialog(self, dialog: CursiveCallback, algo: AlignAlgorithm) -> (Self, AlignAlgorithm) {
+    fn show_dialog(self, dialog: CursiveCallback, settings: Settings) -> (Self, Settings) {
         let mut siv = cursive::default();
         // this theme is the default theme except that the background color is black
         siv.set_theme(cursiv_theme());
         siv.add_global_callback(Key::Esc, dialog::close_top_maybe_quit);
-        siv.set_user_data(algo);
+        siv.set_user_data(settings);
         match self {
             HexView::Aligned(a, send, mut recv) => {
                 siv.add_fullscreen_layer(a.with_name("aligned").full_screen());
@@ -259,7 +269,7 @@ fn delegate_action(action: Action) -> Option<DelegateEvent> {
         Action::Quit => Some(DelegateEvent::Quit),
         Action::Align => Some(DelegateEvent::SwitchToAlign),
         Action::Unalign => Some(DelegateEvent::SwitchToUnalign),
-        Action::Algorithm => Some(DelegateEvent::OpenDialog(Box::new(dialog::algorithm))),
+        Action::Algorithm => Some(DelegateEvent::OpenDialog(Box::new(dialog::settings))),
         Action::Goto => Some(DelegateEvent::OpenDialog(Box::new(dialog::goto))),
         Action::Help => Some(DelegateEvent::OpenDialog(Box::new(dialog::help_window(
             dialog::MAIN_HELP,

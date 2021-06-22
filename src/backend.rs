@@ -13,6 +13,7 @@ use std::{
     io::{Cursor, Write},
 };
 use std::{io::Stdout, sync::mpsc::Sender};
+use unicode_width::UnicodeWidthStr;
 
 /// A wrapper for events coming from crossterm
 #[derive(Clone, Copy, Debug)]
@@ -389,7 +390,7 @@ impl<'a, 'b, 'c> Backend for Cursiv<'a, 'b, 'c> {
     }
 
     fn append_text(&mut self, text: &str, color: Color, effect: Effect) {
-        let len = text.chars().count();
+        let len = text.width();
         let style = theme::Style::none()
             .combine(color.to_cursiv())
             .combine(effect.to_cursiv());
