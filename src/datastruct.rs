@@ -88,17 +88,17 @@ impl CompVec {
         }
     }
     /// Adds a shift to the left vector, returns the change of index to the same element
-    pub fn add_left_shift(&mut self, relative_shift: isize) -> isize {
+    pub fn add_first_shift(&mut self, relative_shift: isize) -> isize {
         self.shift -= relative_shift;
         -relative_shift
     }
     /// Adds a shift to the right vector, returns the change of index to the same element
-    pub fn add_right_shift(&mut self, relative_shift: isize) -> isize {
+    pub fn add_second_shift(&mut self, relative_shift: isize) -> isize {
         self.shift += relative_shift;
         0
     }
     /// Gets the address of the left vector at a given index
-    pub fn get_left_addr(&self, index: isize) -> Option<usize> {
+    pub fn get_first_addr(&self, index: isize) -> Option<usize> {
         if index < 0 || self.xvec.len() <= index as usize {
             None
         } else {
@@ -106,7 +106,7 @@ impl CompVec {
         }
     }
     /// Gets the address of the right vector at a given index
-    pub fn get_right_addr(&self, index: isize) -> Option<usize> {
+    pub fn get_second_addr(&self, index: isize) -> Option<usize> {
         let addr = index - self.shift;
         if addr < 0 || self.yvec.len() <= addr as usize {
             None

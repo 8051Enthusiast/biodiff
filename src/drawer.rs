@@ -35,14 +35,14 @@ fn disp_binary(h: Option<u8>) -> String {
 fn disp_octal(h: Option<u8>) -> String {
     match h {
         Some(bin) => format!("{:03o} ", bin),
-        None => String::from("    ")
+        None => String::from("    "),
     }
 }
 
 fn disp_decimal(h: Option<u8>) -> String {
     match h {
         Some(bin) => format!("{:>3} ", bin),
-        None => String::from("    ")
+        None => String::from("    "),
     }
 }
 
@@ -90,11 +90,12 @@ fn disp_roman(h: Option<u8>) -> String {
             let one = n % 10;
             let ten = (n / 10) % 10;
             let hundred = n / 100;
-            format!("{}{}{}", HUNDREDS[hundred as usize], TENS[ten as usize], ONES[one as usize])
-        },
-        None => {
-            String::new()
+            format!(
+                "{}{}{}",
+                HUNDREDS[hundred as usize], TENS[ten as usize], ONES[one as usize]
+            )
         }
+        None => String::new(),
     };
     format!("{:>9} ", s)
 }
@@ -218,15 +219,21 @@ impl DoubleHexLine {
         }
     }
     /// Prints the DoubleHexLine using the given backend at the line given in `line`
-    fn print<B>(&self, printer: &mut B, line: usize, style: Style)
-    where
-        B: Backend,
-    {
+    /// with the views being on the left and right
+    fn print_hor<B: Backend>(&self, printer: &mut B, line: usize, style: Style) {
         printer.set_line(line);
         self.print_half(printer, line, style, true);
 
         printer.append_text(MIDDLE_PAD, Color::Unimportant, Effect::None);
         self.print_half(printer, line, style, false);
+    }
+
+    fn print_vert<B: Backend>(&self, printer: &mut B, lines: [usize; 2], style: Style) {
+        printer.set_line(lines[0]);
+        self.print_half(printer, lines[0], style, true);
+
+        printer.set_line(lines[1]);
+        self.print_half(printer, lines[1], style, false);
     }
 }
 
@@ -328,23 +335,23 @@ impl CursorState {
 #[derive(Debug, Clone, Copy)]
 pub enum CursorActive {
     Both,
-    Left,
-    Right,
+    First,
+    Second,
     None,
 }
 impl CursorActive {
-    /// Cursor is enabled on the left
-    pub fn is_left(&self) -> bool {
+    /// Cursor is enabled on the first view
+    pub fn is_first(&self) -> bool {
         match self {
-            Self::Both | Self::Left => true,
-            Self::Right | Self::None => false,
+            Self::Both | Self::First => true,
+            Self::Second | Self::None => false,
         }
     }
-    /// Cursor is enabled on the right
-    pub fn is_right(&self) -> bool {
+    /// Cursor is enabled on the second view
+    pub fn is_second(&self) -> bool {
         match self {
-            Self::Both | Self::Right => true,
-            Self::Left | Self::None => false,
+            Self::Both | Self::Second => true,
+            Self::First | Self::None => false,
         }
     }
 }
@@ -353,6 +360,7 @@ impl CursorActive {
 pub struct Style {
     pub mode: DisplayMode,
     pub ascii_col: bool,
+    pub vertical: bool,
 }
 
 impl Style {
@@ -360,22 +368,34 @@ impl Style {
         self.mode.size_per_byte() + self.ascii_col as usize
     }
     fn const_overhead(&self) -> usize {
-        ADDR_SIZE * 2 + MIDDLE_PAD.width() + if self.ascii_col { 2 } else { 0 }
+        let single_overheaad = ADDR_SIZE + if self.ascii_col { 1 } else { 0 };
+        if self.vertical {
+            single_overheaad
+        } else {
+            2 * single_overheaad + MIDDLE_PAD.width()
+        }
     }
     /// returns the number of columns that are displayed on a given display width
     /// Goes in steps of 8 above 24, steps of 4 for 8 - 24 and steps of 1 for < 8
-    pub fn get_doublehex_columns(&self, columns: usize) -> usize {
+    pub fn get_doublehex_dims(&self, columns: usize, rows: usize) -> (usize, usize) {
+        let y = if self.vertical {
+            (rows - 3) / 2
+        } else {
+            rows - 2
+        };
         if columns <= self.const_overhead() {
-            return 0;
+            return (1, y)
         }
-        let max_col = (columns - self.const_overhead()) / (self.size_per_byte() * 2);
-        if max_col < 8 {
+        let max_col = (columns - self.const_overhead())
+            / (self.size_per_byte() * if self.vertical { 1 } else { 2 });
+        let x = if max_col < 8 {
             max_col
         } else if max_col < 24 {
             max_col / 4 * 4
         } else {
             max_col / 8 * 8
-        }
+        };
+        (x, y)
     }
 }
 
@@ -384,6 +404,7 @@ impl Default for Style {
         Style {
             mode: DisplayMode::Hex,
             ascii_col: false,
+            vertical: false,
         }
     }
 }
@@ -401,19 +422,73 @@ impl DoubleHexContext {
             style: Style::default(),
         }
     }
-    fn half_width(&self) -> usize {
+    fn hor_half_width(&self) -> usize {
         ADDR_SIZE
             + self.style.size_per_byte() * self.cursor.get_size_x()
             + if self.style.ascii_col { 2 } else { 1 } * MIDDLE_PAD.width()
     }
+    fn vert_half_height(&self) -> usize {
+        self.cursor.get_size_y() + 1
+    }
     fn full_width(&self) -> usize {
-        self.style.const_overhead() + 2 * self.style.size_per_byte() * self.cursor.get_size_x()
+        if self.style.vertical {
+            self.style.const_overhead() + self.style.size_per_byte() * self.cursor.get_size_x()
+        } else {
+            self.style.const_overhead() + 2 * self.style.size_per_byte() * self.cursor.get_size_x()
+        }
+    }
+    fn full_height(&self) -> usize {
+        if self.style.vertical {
+            self.cursor.get_size_y() * 2 + 3
+        } else {
+            self.cursor.get_size_y() + 2
+        }
     }
     /// Prints a whole screen of hex data
     pub fn print_doublehex_screen<B: Backend>(&self, content: &[DoubleHexLine], backend: &mut B) {
         for (i, line) in content.iter().enumerate() {
-            // we offset because of the title bar
-            line.print(backend, i + 1, self.style);
+            if self.style.vertical {
+                line.print_vert(backend, [i + 1, self.vert_half_height() + i + 1], self.style);
+            } else {
+                // we offset because of the title bar
+                line.print_hor(backend, i + 1, self.style);
+            }
+        }
+    }
+
+    fn first_cursor(&self) -> (usize, usize) {
+        let ret_x = ADDR_SIZE + self.cursor.get_x() * self.style.mode.size_per_byte();
+        let ret_y = self.cursor.get_y() + 1;
+        (ret_x, ret_y)
+    }
+
+    fn first_cursor_ascii(&self) -> Option<(usize, usize)> {
+        if !self.style.ascii_col {
+            return None;
+        }
+        let ret_x = ADDR_SIZE
+            + MIDDLE_PAD.width()
+            + self.cursor.get_x()
+            + self.cursor.get_size_x() * self.style.mode.size_per_byte();
+        let ret_y = self.cursor.get_y() + 1;
+        Some((ret_x, ret_y))
+    }
+
+    fn second_cursor(&self) -> (usize, usize) {
+        let (first_x, first_y) = self.first_cursor();
+        if self.style.vertical {
+            (first_x, first_y + self.vert_half_height())
+        } else {
+            (first_x + self.hor_half_width(), first_y)
+        }
+    }
+
+    fn second_cursor_ascii(&self) -> Option<(usize, usize)> {
+        let (first_x, first_y) = self.first_cursor_ascii()?;
+        if self.style.vertical {
+            Some((first_x, first_y + self.vert_half_height()))
+        } else {
+            Some((first_x + self.hor_half_width(), first_y))
         }
     }
 
@@ -440,7 +515,11 @@ impl DoubleHexContext {
         } else {
             0..(-scroll_amount) as usize
         } {
-            content[line].print(backend, line + 1, self.style)
+            if self.style.vertical {
+                content[line].print_vert(backend, [line + 1, self.vert_half_height() + line + 1], self.style)
+            } else {
+                content[line].print_hor(backend, line + 1, self.style)
+            }
         }
     }
 
@@ -465,40 +544,30 @@ impl DoubleHexContext {
             }
         };
 
-        let cursor = &self.cursor;
-        // left cursor
-        let left_x = ADDR_SIZE + cursor.get_x() * self.style.mode.size_per_byte();
-        let left_effect = effect(active.is_left());
-        let left_color = self
-            .style
-            .mode
-            .color(at_cursor.0, at_cursor.1, self.cursor.get_y() + 1);
-        let left_text = self.style.mode.disp(at_cursor.0, true);
+        // first cursor
+        let (first_x, first_y) = self.first_cursor();
+        let first_effect = effect(active.is_first());
+        let first_color = self.style.mode.color(at_cursor.0, at_cursor.1, first_y);
+        let first_text = self.style.mode.disp(at_cursor.0, true);
         // note again that the title bar is skipped
-        backend.set_pos(left_x, cursor.get_y() + 1);
+        backend.set_pos(first_x, first_y);
         // we cut of the last byte of the disp_hex so that the space is not reverse video'd
-        backend.append_text(&left_text, left_color, left_effect);
+        backend.append_text(&first_text, first_color, first_effect);
+        if let Some((fx, fy)) = self.first_cursor_ascii() {
+            backend.set_pos(fx, fy);
+            backend.append_text(&disp_ascii(at_cursor.0), first_color, first_effect);
+        }
 
         // right cursor
-        let right_x = left_x + self.half_width();
-        let right_effect = effect(active.is_right());
-        let right_color = self
-            .style
-            .mode
-            .color(at_cursor.1, at_cursor.0, self.cursor.get_y() + 1);
-        let right_text = self.style.mode.disp(at_cursor.1, true);
-        backend.set_pos(right_x, cursor.get_y() + 1);
-        backend.append_text(&right_text, right_color, right_effect);
-        if self.style.ascii_col {
-            let left_ascii_x = ADDR_SIZE
-                + MIDDLE_PAD.width()
-                + cursor.get_x()
-                + cursor.get_size_x() * self.style.mode.size_per_byte();
-            backend.set_pos(left_ascii_x, cursor.get_y() + 1);
-            backend.append_text(&disp_ascii(at_cursor.0), left_color, left_effect);
-            let right_ascii_x = left_ascii_x + self.half_width();
-            backend.set_pos(right_ascii_x, cursor.get_y() + 1);
-            backend.append_text(&disp_ascii(at_cursor.1), right_color, right_effect);
+        let (second_x, second_y) = self.second_cursor();
+        let second_effect = effect(active.is_second());
+        let second_color = self.style.mode.color(at_cursor.1, at_cursor.0, second_y);
+        let second_text = self.style.mode.disp(at_cursor.1, true);
+        backend.set_pos(second_x, second_y);
+        backend.append_text(&second_text, second_color, second_effect);
+        if let Some((sx, sy)) = self.second_cursor_ascii() {
+            backend.set_pos(sx, sy);
+            backend.append_text(&disp_ascii(at_cursor.1), second_color, second_effect);
         }
     }
 
@@ -507,8 +576,8 @@ impl DoubleHexContext {
         &self,
         printer: &mut B,
         title: &str,
-        left: &str,
-        right: &str,
+        first: &str,
+        second: &str,
     ) {
         // function for truncating the string on the left when it is too long
         // also inserts an < to indicate that it was truncated
@@ -528,32 +597,53 @@ impl DoubleHexContext {
         };
         // the title is displayed above the addresses
         let short_title = title.chars().take(ADDR_SIZE - 1).collect::<String>();
-        let short_left = shorten(left);
-        let short_right = shorten(right);
+        let short_first = shorten(first);
+        let short_second = shorten(second);
 
-        let titlebar = format!(
-            "{:addrsize$} {:>hexsize$} {}{:addrsize$} {:>hexsize$} ",
+        let addrsize = ADDR_SIZE - 1;
+        let hexsize = self.cursor.get_size_x() * self.style.size_per_byte()
+            - if self.style.ascii_col { 0 } else { 1 };
+        let first_title = format!(
+            "{:addrsize$} {:>hexsize$} ",
             short_title,
-            short_left,
-            MIDDLE_PAD,
-            " ",
-            short_right,
-            addrsize = ADDR_SIZE - 1,
-            hexsize = self.cursor.get_size_x() * self.style.size_per_byte()
-                - if self.style.ascii_col { 0 } else { 1 }
+            short_first,
+            addrsize = addrsize,
+            hexsize = hexsize
         );
         printer.set_line(0);
-        printer.append_text(&titlebar, Color::HexSame, Effect::Inverted);
+        printer.append_text(&first_title, Color::HexSame, Effect::Inverted);
+        if self.style.vertical {
+            printer.set_line(self.vert_half_height())
+        } else {
+            printer.append_text(MIDDLE_PAD, Color::HexSame, Effect::Inverted);
+        }
+        let second_title = format!(
+            "{:addrsize$} {:>hexsize$} ",
+            short_title,
+            short_second,
+            addrsize = addrsize,
+            hexsize = hexsize
+        );
+        printer.append_text(&second_title, Color::HexSame, Effect::Inverted);
     }
 
     /// Prints the bottom text containing key information
-    pub fn print_bottom_line<B: Backend>(&self, printer: &mut B, line: usize) {
+    pub fn print_bottom_line<B: Backend>(&self, printer: &mut B) {
         const BOTTOM_TEXT: &str = "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto";
+        let line = self.full_height() - 1;
         printer.set_line(line);
         printer.append_text(
             &format!("{:width$}", BOTTOM_TEXT, width = self.full_width()),
             Color::HexSame,
             Effect::Inverted,
         );
+        for line in self.full_height()..printer.size().1 {
+            printer.set_line(line);
+            printer.append_text(
+                &format!("{:width$}", " ", width = self.full_width()),
+                Color::HexSame,
+                Effect::None,
+            );
+        }
     }
 }

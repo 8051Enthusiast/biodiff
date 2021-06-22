@@ -6,7 +6,8 @@ Compare binary files using alignment algorithms.
 Keys:
  * left/right/up/down arrow: Move Cursor
  * 'h', 'j', 'k', 'l', Page Up/Down: Move view without moving cursor
- * 'a', 's', 'd' (Unaligned View): Choose active cursor left/both/right
+ * 'a', 's', 'd' (Unaligned View): Choose active cursor
+                        primary/both/secondary view
  * space: Jump to the next difference (but at least half a page)
  * F1: View Help
  * F2: View Unaligned
@@ -20,9 +21,13 @@ This is the binary diff view that just shows both files contiguously
 and is the mode that the viewer starts in. You can align at the
 cursor by pressing F3 and go into the Aligned View.
 
-The left view and right view can by moved independently by first
-choosing active views with pressing the 'a'/'s'/'d' for left/both/right
-respectively.
+The primary view is the one on the left or top side (depending on
+display settings), and the secondary view is the one on the right
+or bottom side.
+
+The primary view and secondary view can by moved independently by first
+choosing active views with pressing the 'a'/'s'/'d' for
+primary/both/secondary respectively.
 
 Aligned View
 ------------

@@ -2,8 +2,8 @@ Goto
 ====
 
 Put the address you want to go in (hexadecimal) into the address field.
-Then you can either go to that address on the left side by clicking
-'Goto Left' or the same for the right view.
+Then you can either go to that address on the left/top side by clicking
+'Goto Primary' or the same for the other view.
 
 Note that for the unaligned view, in case you have the cursor activated
 for a single view, the goto will only move that side (and you have to

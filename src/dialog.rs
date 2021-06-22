@@ -123,17 +123,25 @@ where
 }
 
 fn apply_style(siv: &mut Cursive) {
-    let mut new_style = Style::default();
-    new_style.ascii_col = siv
+    let ascii_col = siv
         .find_name::<Checkbox>("ascii_col")
         .expect("Could not find ascii checkbox in settings")
         .is_checked();
-    new_style.mode = number_to_stylemode(
+    let vertical = siv
+        .find_name::<Checkbox>("vertical")
+        .expect("Could not find vertical checkbox in settings")
+        .is_checked();
+    let mode = number_to_stylemode(
         &siv.find_name::<SelectView<usize>>("display mode")
             .expect("Could not find display mode select view")
             .selected_id()
             .expect("Display mode select view appears to be empty"),
     );
+    let new_style = Style {
+        mode,
+        ascii_col,
+        vertical,
+    };
     siv.user_data::<Settings>()
         .expect("Could not get align algorithm info from cursive")
         .style = new_style;
@@ -348,19 +356,33 @@ pub fn style(siv: &mut Cursive) -> impl View {
         .style;
     let left_side = LinearLayout::vertical()
         .child(
-            ListView::new().child(
-                "Ascii Column:",
-                Checkbox::new()
-                    .with_checked(style_settings.ascii_col)
-                    .on_change(|s, check| {
-                        on_hexview(
-                            s,
-                            move |v| v.dh.style.ascii_col = check,
-                            move |v| v.dh.style.ascii_col = check,
-                        )
-                    })
-                    .with_name("ascii_col"),
-            ),
+            ListView::new()
+                .child(
+                    "Ascii Column:",
+                    Checkbox::new()
+                        .with_checked(style_settings.ascii_col)
+                        .on_change(|s, check| {
+                            on_hexview(
+                                s,
+                                move |v| v.dh.style.ascii_col = check,
+                                move |v| v.dh.style.ascii_col = check,
+                            )
+                        })
+                        .with_name("ascii_col"),
+                )
+                .child(
+                    "Vertical Split:",
+                    Checkbox::new()
+                        .with_checked(style_settings.vertical)
+                        .on_change(|s, check| {
+                            on_hexview(
+                                s,
+                                move |v| v.dh.style.vertical = check,
+                                move |v| v.dh.style.vertical = check,
+                            )
+                        })
+                        .with_name("vertical"),
+                ),
         )
         .child(Button::new("OK", apply_style))
         .child(Button::new("Cancel", on_quit))
@@ -462,8 +484,8 @@ pub fn goto(siv: &mut Cursive) {
                     })),
             )
             // fun fact: call_goto itself is 4 nested closures, so this makes it 5
-            .button("Goto Left", move |siv| call_goto(siv, false))
-            .button("Goto Right", move |siv| call_goto(siv, true))
+            .button("Goto Primary", move |siv| call_goto(siv, false))
+            .button("Goto Secondary", move |siv| call_goto(siv, true))
             .button("Cancel", close_top_maybe_quit)
             .title("Goto"),
         )

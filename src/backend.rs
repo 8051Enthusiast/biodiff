@@ -36,9 +36,9 @@ pub enum Action {
     Algorithm,
     Refresh,
     Goto,
-    CursorLeft,
+    CursorFirst,
     CursorBoth,
-    CursorRight,
+    CursorSecond,
 }
 
 impl TryFrom<Event> for Action {
@@ -63,9 +63,9 @@ impl TryFrom<Event> for Action {
                 KeyCode::Esc => Action::Quit,
                 KeyCode::Char('?') => Action::Help,
                 KeyCode::Char('r') => Action::Refresh,
-                KeyCode::Char('a') => Action::CursorLeft,
+                KeyCode::Char('a') => Action::CursorFirst,
                 KeyCode::Char('s') => Action::CursorBoth,
-                KeyCode::Char('d') => Action::CursorRight,
+                KeyCode::Char('d') => Action::CursorSecond,
                 KeyCode::Char('h') => Action::LeftAlt,
                 KeyCode::Char('j') => Action::DownAlt,
                 KeyCode::Char('k') => Action::UpAlt,
