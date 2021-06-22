@@ -25,6 +25,27 @@ fn disp_hex(h: Option<u8>) -> String {
     }
 }
 
+fn disp_binary(h: Option<u8>) -> String {
+    match h {
+        Some(bin) => format!("{:08b} ", bin),
+        None => String::from("         "),
+    }
+}
+
+fn disp_octal(h: Option<u8>) -> String {
+    match h {
+        Some(bin) => format!("{:03o} ", bin),
+        None => String::from("    ")
+    }
+}
+
+fn disp_decimal(h: Option<u8>) -> String {
+    match h {
+        Some(bin) => format!("{:>3} ", bin),
+        None => String::from("    ")
+    }
+}
+
 fn disp_braille(h: Option<u8>) -> String {
     match h {
         Some(byte) => {
@@ -59,6 +80,25 @@ fn disp_ascii(h: Option<u8>) -> String {
     .into()
 }
 
+fn disp_roman(h: Option<u8>) -> String {
+    const ONES: [&str; 10] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
+    const TENS: [&str; 10] = ["", "X", "XX", "XXX", "XL", "L", "LX", "LXX", "LXXX", "XC"];
+    const HUNDREDS: [&str; 3] = ["", "C", "CC"];
+    let s = match h {
+        Some(0) => String::from("N"),
+        Some(n) => {
+            let one = n % 10;
+            let ten = (n / 10) % 10;
+            let hundred = n / 100;
+            format!("{}{}{}", HUNDREDS[hundred as usize], TENS[ten as usize], ONES[one as usize])
+        },
+        None => {
+            String::new()
+        }
+    };
+    format!("{:>9} ", s)
+}
+
 /// Insertions/Deletions are typically green, mismatches red and same bytes white
 fn color_from_bytes(a: Option<u8>, b: Option<u8>) -> Color {
     match (a, b) {
@@ -88,21 +128,27 @@ fn color_from_mixed_bytes(a: Option<u8>, b: Option<u8>) -> Color {
 #[repr(usize)]
 #[derive(Clone, Copy, Debug)]
 pub enum DisplayMode {
-    HexOnly,
-    HexAsciiMix,
-    Braille,
+    Hex = 0,
+    Binary = 1,
+    Decimal = 2,
+    Octal = 3,
+    HexAsciiMix = 4,
+    Braille = 5,
+    Roman = 6,
 }
 
 impl DisplayMode {
     fn size_per_byte(&self) -> usize {
         match self {
-            Self::HexOnly | Self::HexAsciiMix => 3,
+            Self::Roman => 10,
+            Self::Binary => 9,
+            Self::Decimal | Self::Octal => 4,
+            Self::Hex | Self::HexAsciiMix => 3,
             Self::Braille => 2,
         }
     }
     fn color(&self, a: Option<u8>, b: Option<u8>, row: usize) -> Color {
         match self {
-            Self::HexOnly => color_from_bytes(a, b),
             Self::HexAsciiMix => color_from_mixed_bytes(a, b),
             Self::Braille => {
                 if row % 2 == 0 {
@@ -111,15 +157,20 @@ impl DisplayMode {
                     color_secondary_from_bytes(a, b)
                 }
             }
+            _otherwise => color_from_bytes(a, b),
         }
     }
     fn disp(&self, a: Option<u8>, short: bool) -> String {
         let mut out = match self {
-            Self::HexOnly => disp_hex(a),
+            Self::Hex => disp_hex(a),
+            Self::Binary => disp_binary(a),
+            Self::Decimal => disp_decimal(a),
+            Self::Octal => disp_octal(a),
             Self::HexAsciiMix => disp_mixed(a),
             Self::Braille => disp_braille(a),
+            Self::Roman => disp_roman(a),
         };
-        if short && matches!(self, Self::HexOnly | Self::HexAsciiMix) {
+        if short && matches!(self, Self::Hex | Self::HexAsciiMix) {
             let _ = out.pop();
         }
         out
@@ -331,7 +382,7 @@ impl Style {
 impl Default for Style {
     fn default() -> Self {
         Style {
-            mode: DisplayMode::HexOnly,
+            mode: DisplayMode::Hex,
             ascii_col: false,
         }
     }

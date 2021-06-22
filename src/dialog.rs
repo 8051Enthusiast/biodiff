@@ -315,9 +315,13 @@ pub fn algorithm(siv: &mut Cursive) -> impl View {
 
 fn number_to_stylemode(x: &usize) -> DisplayMode {
     match x {
-        0 => DisplayMode::HexOnly,
-        1 => DisplayMode::HexAsciiMix,
-        2 => DisplayMode::Braille,
+        0 => DisplayMode::Hex,
+        1 => DisplayMode::Binary,
+        2 => DisplayMode::Decimal,
+        3 => DisplayMode::Octal,
+        4 => DisplayMode::HexAsciiMix,
+        5 => DisplayMode::Braille,
+        6 => DisplayMode::Roman,
         otherwise => panic!(
             "Unknown item number {} for style displaymode setting",
             otherwise
@@ -362,7 +366,15 @@ pub fn style(siv: &mut Cursive) -> impl View {
         .child(Button::new("Cancel", on_quit))
         .child(Button::new("Help", help_window(STYLE_HELP)));
     let right_side = SelectView::new()
-        .with_all([("Hex Only", 0usize), ("Hex/Ascii Mixed", 1), ("Braille", 2)])
+        .with_all([
+            ("Hex", 0usize),
+            ("Binary", 1),
+            ("Decimal", 2),
+            ("Octal", 3),
+            ("Hex/Ascii Mixed", 4),
+            ("Braille", 5),
+            ("Roman", 6),
+        ])
         .selected(style_settings.mode as usize)
         .on_select(|s, t| {
             let mode = number_to_stylemode(t);
