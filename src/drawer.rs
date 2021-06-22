@@ -124,6 +124,9 @@ impl DisplayMode {
         }
         out
     }
+    fn can_scroll(&self) -> bool {
+        !matches!(self, Self::Braille)
+    }
 }
 /// A line that can be printed using a backend for two hex views next to each other
 #[derive(Debug, Clone)]
@@ -374,7 +377,10 @@ impl DoubleHexContext {
         if scroll_amount == 0 {
             return;
         }
-        if !backend.can_scroll() || scroll_amount.abs() as usize > content.len() {
+        if !backend.can_scroll()
+            || !self.style.mode.can_scroll()
+            || scroll_amount.abs() as usize > content.len()
+        {
             return self.print_doublehex_screen(content, backend);
         }
         backend.scroll(scroll_amount);
