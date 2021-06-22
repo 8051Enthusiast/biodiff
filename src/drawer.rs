@@ -2,7 +2,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::backend::{Backend, Color, Effect};
 
-const MIDDLE_PAD: &str = "│";
+const MIDDLE_PAD: &str = "|";
 const ADDR_SIZE: usize = 11;
 
 /// Contains 8 digits of an address, with a space in between and at the front and end
