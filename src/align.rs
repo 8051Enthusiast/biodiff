@@ -1,6 +1,6 @@
-use std::sync::{mpsc::Sender, Arc};
+use std::sync::mpsc::Sender;
 
-use crate::view::AlignedMessage;
+use crate::{utils::FileContent, view::AlignedMessage};
 use bio::alignment::{
     pairwise::{self, MatchFunc, Scoring},
     Alignment, AlignmentOperation as Op,
@@ -70,8 +70,8 @@ impl AlignAlgorithm {
     /// It should then immediately return.
     pub fn start_align(
         &self,
-        x: Arc<Vec<u8>>,
-        y: Arc<Vec<u8>>,
+        x: FileContent,
+        y: FileContent,
         addr: (usize, usize),
         sender: Sender<AlignedMessage>,
     ) {
@@ -190,8 +190,8 @@ impl AlignElement {
 
 /// Aligns x to y as a whole
 fn align_whole<F: MatchFunc>(
-    x: Arc<Vec<u8>>,
-    y: Arc<Vec<u8>>,
+    x: FileContent,
+    y: FileContent,
     scoring: Scoring<F>,
     band: Banded,
     sender: Sender<AlignedMessage>,
@@ -203,8 +203,8 @@ fn align_whole<F: MatchFunc>(
 
 /// Blockwise alignment in the ascending address direction
 pub fn align_end<F: MatchFunc + Clone>(
-    x: Arc<Vec<u8>>,
-    y: Arc<Vec<u8>>,
+    x: FileContent,
+    y: FileContent,
     addr: (usize, usize),
     scoring: Scoring<F>,
     band: Banded,
@@ -243,8 +243,8 @@ pub fn align_end<F: MatchFunc + Clone>(
 
 /// Same as align_end, but in the other direction
 pub fn align_front<F: MatchFunc + Clone>(
-    x: Arc<Vec<u8>>,
-    y: Arc<Vec<u8>>,
+    x: FileContent,
+    y: FileContent,
     addr: (usize, usize),
     scoring: Scoring<F>,
     band: Banded,

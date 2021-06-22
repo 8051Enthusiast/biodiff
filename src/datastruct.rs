@@ -1,4 +1,6 @@
-use std::{ops::Range, sync::Arc};
+use std::ops::Range;
+
+use crate::utils::FileContent;
 
 /// trait for arrays with signed index
 pub trait SignedArray {
@@ -70,15 +72,15 @@ impl<T: Clone> SignedArray for DoubleVec<T> {
 
 /// A vector consisting of two arrays, the second one being at an
 /// offset of the second one.
-pub struct CompVec<T: Clone> {
-    pub xvec: Arc<Vec<T>>,
-    pub yvec: Arc<Vec<T>>,
+pub struct CompVec {
+    pub xvec: FileContent,
+    pub yvec: FileContent,
     pub shift: isize,
 }
 
-impl<T: Clone> CompVec<T> {
+impl CompVec {
     /// Creates a new vector pair with zero offset between the vectors.
-    pub fn new(xvec: Arc<Vec<T>>, yvec: Arc<Vec<T>>) -> Self {
+    pub fn new(xvec: FileContent, yvec: FileContent) -> Self {
         CompVec {
             xvec,
             yvec,
@@ -113,13 +115,13 @@ impl<T: Clone> CompVec<T> {
         }
     }
     /// Returns the two arrays
-    pub fn get_data(&self) -> (Arc<Vec<T>>, Arc<Vec<T>>) {
+    pub fn get_data(&self) -> (FileContent, FileContent) {
         (self.xvec.clone(), self.yvec.clone())
     }
 }
 
-impl<T: Clone> SignedArray for CompVec<T> {
-    type Item = (Option<T>, Option<T>);
+impl SignedArray for CompVec {
+    type Item = (Option<u8>, Option<u8>);
 
     fn bounds(&self) -> Range<isize> {
         match (self.xvec.len() as isize, self.yvec.len() as isize) {
@@ -187,28 +189,6 @@ mod tests {
                 Some(2),
                 Some(3),
                 Some(4)
-            ]
-        );
-    }
-    #[test]
-    fn compvec() {
-        let mut v = CompVec::new(Arc::new(vec![1, 2, 3]), Arc::new(vec![5, 6]));
-        assert_eq!(v.bounds(), 0..3);
-        assert_eq!(
-            v.get_range(0..3),
-            vec![(Some(1), Some(5)), (Some(2), Some(6)), (Some(3), None),]
-        );
-        v.add_left_shift(1);
-        assert_eq!(v.bounds(), -1..3);
-        assert_eq!(
-            v.get_range(-2..4),
-            vec![
-                (None, None),
-                (None, Some(5)),
-                (Some(1), Some(6)),
-                (Some(2), None),
-                (Some(3), None),
-                (None, None)
             ]
         );
     }

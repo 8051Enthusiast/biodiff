@@ -1,7 +1,4 @@
-use std::{
-    ops::Range,
-    sync::{mpsc::Sender, Arc},
-};
+use std::{ops::Range, sync::mpsc::Sender};
 
 use cursive::{Vec2, View};
 
@@ -10,12 +7,12 @@ use crate::{
     backend::{Action, Backend, Cursiv},
     datastruct::{CompVec, DoubleVec, SignedArray},
     drawer::{CursorActive, DoubleHexContext, DoubleHexLine},
-    utils::PointedFile,
+    utils::{FileContent, PointedFile},
 };
 
 /// An unaligned view that is just two files next to each other
 pub struct Unaligned {
-    data: CompVec<u8>,
+    data: CompVec,
     filenames: (String, String),
     index: isize,
     pub dh: DoubleHexContext,
@@ -272,7 +269,7 @@ impl From<Action> for AlignedMessage {
 pub struct Aligned {
     data: DoubleVec<AlignElement>,
     filenames: (String, String),
-    original: (Arc<Vec<u8>>, Arc<Vec<u8>>),
+    original: (FileContent, FileContent),
     index: isize,
     pub dh: DoubleHexContext,
 }

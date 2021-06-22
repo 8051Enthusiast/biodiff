@@ -121,6 +121,7 @@ dependencies = [
  "crossterm",
  "cursive",
  "cursive_buffered_backend",
+ "memmap2",
  "unicode-width",
 ]
 
@@ -583,6 +584,15 @@ name = "memchr"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b16bd47d9e329435e309c58469fe0791c2d0d1ba96ec0954152a5ae2b04387dc"
+
+[[package]]
+name = "memmap2"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20ff203f7bdc401350b1dbaa0355135777d25f41c0bbc601851bbd6cf61e8ff5"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "mio"
