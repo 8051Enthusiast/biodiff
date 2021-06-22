@@ -360,7 +360,7 @@ pub fn style(siv: &mut Cursive) -> impl View {
         )
         .child(Button::new("OK", apply_style))
         .child(Button::new("Cancel", on_quit))
-        .child(Button::new("Help", help_window(ALGORITHM_HELP)));
+        .child(Button::new("Help", help_window(STYLE_HELP)));
     let right_side = SelectView::new()
         .with_all([("Hex Only", 0usize), ("Hex/Ascii Mixed", 1), ("Braille", 2)])
         .selected(style_settings.mode as usize)
@@ -381,8 +381,8 @@ pub fn style(siv: &mut Cursive) -> impl View {
         )
         .title("Style Settings"),
     )
-    .on_event(Key::F1, help_window(ALGORITHM_HELP))
-    .on_event(Key::Esc, on_quit)
+    .on_event(Key::F1, help_window(STYLE_HELP))
+    .on_event(Key::Esc, apply_style)
 }
 
 pub fn settings(siv: &mut Cursive) {
@@ -481,4 +481,5 @@ pub fn help_window(help_text: &'static str) -> impl Fn(&mut Cursive) {
 
 pub const MAIN_HELP: &str = include_str!("help/main.txt");
 pub const ALGORITHM_HELP: &str = include_str!("help/algorithm.txt");
+pub const STYLE_HELP: &str = include_str!("help/style.txt");
 pub const GOTO_HELP: &str = include_str!("help/goto.txt");

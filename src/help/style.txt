@@ -1,0 +1,41 @@
+Display Style Settings
+======================
+
+This window allows setting the way the binary is displayed.
+While the settings are previewed directly, pressing Cancel
+resets them to their previous state.
+
+Ascii Column
+------------
+Adds a column alongside the usual hex view which shows the
+byte values as characters if they are in the ASCII range,
+and else displays them as dots.
+
+Hex Only
+--------
+The default, shows byte values always as their values in base 16.
+
+Hex/Ascii Mixed
+---------------
+Shows bytes in the printable ASCII range as characters.
+Furthermore, also displays escape sequences \n, \r and \t.
+Space is displayed as two consecutive dots ("..").
+If the byte does not match any of these criteria, it is displayed
+as the hex value.
+
+Note that the bytes in the ASCII range are displayed using
+full-width unicode characters, which means that unicode support
+is required.
+
+Braille
+-------
+The bits of the byte values are mapped to dots. If the bits of
+the original byte are numbered 0 to 7 from the least significant
+bit to the most significant bit, it is mapped in the following
+way to dots:
+ ________
+ | 7  3 |
+ | 6  2 |
+ | 5  1 |
+ | 4  0 |
+ --------

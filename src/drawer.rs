@@ -28,7 +28,8 @@ fn disp_hex(h: Option<u8>) -> String {
 fn disp_braille(h: Option<u8>) -> String {
     match h {
         Some(byte) => {
-            let reordered_byte = byte & 0x87 | byte >> 1 & 0x38 | byte << 3 & 0x40;
+            let rbyte = byte.reverse_bits();
+            let reordered_byte = rbyte & 0x87 | rbyte >> 1 & 0x38 | rbyte << 3 & 0x40;
             let braille_char = char::from_u32(0x2800u32 + reordered_byte as u32)
                 .expect("Could not convert to braille codepoint");
             format!("│{}", braille_char)
