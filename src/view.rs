@@ -40,7 +40,7 @@ impl Unaligned {
     /// Resizes the view without drawing it, returning if anything changed
     pub fn resize(&mut self, dimensions: (usize, usize)) -> bool {
         let (columns, rows) = dimensions;
-        let hex_col = self.dh.get_doublehex_columns(columns);
+        let hex_col = self.dh.style.get_doublehex_columns(columns);
         let old_dimensions = (self.dh.cursor.get_size_x(), self.dh.cursor.get_size_y());
         // subtract two for top and bottom bars
         let new_dimensions = (hex_col, rows - 2);
@@ -398,7 +398,7 @@ impl Aligned {
     /// Resize the view without printing it, returns whether redrawing is necessary.
     pub fn resize(&mut self, dimensions: (usize, usize)) -> bool {
         let (columns, rows) = dimensions;
-        let hex_col = self.dh.get_doublehex_columns(columns);
+        let hex_col = self.dh.style.get_doublehex_columns(columns);
         let old_dimensions = (self.dh.cursor.get_size_x(), self.dh.cursor.get_size_y());
         let new_dimensions = (hex_col, rows - 2);
         self.index += self.dh.cursor.resize(new_dimensions);
