@@ -5,6 +5,7 @@ use bio::alignment::{
     pairwise::{self, MatchFunc, Scoring},
     Alignment, AlignmentOperation as Op,
 };
+use serde::{Serialize, Deserialize};
 
 pub const DEFAULT_BLOCKSIZE: usize = 8192;
 pub const DEFAULT_KMER: usize = 8;
@@ -15,7 +16,7 @@ pub const DEFAULT_WINDOW: usize = 6;
 /// and aligns only using `blocksize` bytes from each sequence in one direction, which
 /// makes it works fast and local, but it doesn't see bigger gaps and everything after big gaps
 /// tends to be unaligned.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum AlignMode {
     Local,
     Global,
@@ -24,7 +25,7 @@ pub enum AlignMode {
 
 /// Determines whether to use the banded variant of the algorithm with given k-mer length
 /// and window size
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Banded {
     Normal,
     Banded { kmer: usize, window: usize },
@@ -42,7 +43,7 @@ impl Banded {
 }
 
 /// Contains parameters to run the alignment algorithm with
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AlignAlgorithm {
     pub gap_open: i32,
     pub gap_extend: i32,

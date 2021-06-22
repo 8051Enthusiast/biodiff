@@ -419,11 +419,33 @@ pub fn style(siv: &mut Cursive) -> impl View {
     .on_event(Key::Esc, apply_style)
 }
 
+fn save_settings(siv: &mut Cursive) {
+    let settings = siv
+        .user_data::<Settings>()
+        .expect("Could not get settings from cursive");
+    if let Err(e) = settings.save_config() {
+        siv.add_layer(
+            Dialog::text(format!("Could not save config: {}", e))
+                .button("Close", close_top_maybe_quit)
+                .title("Error saving config"),
+        )
+    } else {
+        siv.add_layer(
+            Dialog::text("Successfully saved config!")
+                .button("Close", close_top_maybe_quit)
+                .title("Saved config"),
+        )
+    }
+}
+
 pub fn settings(siv: &mut Cursive) {
     siv.add_layer(
         Dialog::around(
             LinearLayout::vertical()
-                .child(TextView::new("Choose the settings you wish to change"))
+                .child(TextView::new(
+                    "Choose the settings you wish to change.\n\
+                    Settings can be saved permanently by clicking 'Save'.\n",
+                ))
                 .child(
                     SelectView::new()
                         .with_all([("Algorithm", 0), ("Display Style", 1)])
@@ -438,9 +460,10 @@ pub fn settings(siv: &mut Cursive) {
                             }
                             otherwise => panic!("Unknown setting selection index: {}", otherwise),
                         }),
-                )
-                .child(Button::new("Close", close_top_maybe_quit)),
+                ),
         )
+        .button("Close", close_top_maybe_quit)
+        .button("Save", save_settings)
         .title("Settings"),
     )
 }

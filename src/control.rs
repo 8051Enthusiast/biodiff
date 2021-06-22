@@ -10,9 +10,23 @@ use cursive::{
 };
 use cursive::{traits::Boxable, views::ResizedView, Cursive};
 use cursive_buffered_backend::BufferedBackend;
+use dirs::config_dir;
+use serde::{Deserialize, Serialize};
 
-use crate::{align::{AlignAlgorithm, AlignMode}, backend::{send_cross_actions, Action, Cross}, dialog, drawer::{CursorState, DoubleHexContext, Style}, utils::PointedFile, view::{self, Aligned, AlignedMessage}};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use crate::{
+    align::{AlignAlgorithm, AlignMode},
+    backend::{send_cross_actions, Action, Cross},
+    dialog,
+    drawer::{CursorState, DoubleHexContext, Style},
+    utils::PointedFile,
+    view::{self, Aligned, AlignedMessage},
+};
+use std::{
+    error::Error,
+    fs::read_to_string,
+    path::PathBuf,
+    sync::mpsc::{channel, Receiver, Sender},
+};
 
 type CursiveCallback = Box<dyn Fn(&mut Cursive) + 'static + Send>;
 
@@ -20,9 +34,13 @@ type CursiveCallback = Box<dyn Fn(&mut Cursive) + 'static + Send>;
 /// when opening dialog boxes. This is done because initially, the cursive backend was too flickery.
 /// However, this was fixed by using cursive_buffered_backend, so now this is only a minor optimization.
 pub fn run(x: PointedFile, y: PointedFile) {
-    let mut settings = Settings::default();
+    let mut settings = Settings::from_config().unwrap_or_default();
     let mut hv = HexView::new(x, y);
     loop {
+        *match hv {
+            HexView::Aligned(ref mut v, _, _) => &mut v.dh.style,
+            HexView::Unaligned(ref mut v) => &mut v.dh.style,
+        } = settings.style;
         let mut cross = Cross::init();
         let (hv_new, quit) = hv.process_cross(&mut cross, &settings);
         hv = hv_new;
@@ -34,17 +52,48 @@ pub fn run(x: PointedFile, y: PointedFile) {
         };
         hv = hv_new;
         settings = settings_new;
-        *match hv {
-            HexView::Aligned(ref mut v, _, _) => &mut v.dh.style,
-            HexView::Unaligned(ref mut v) => &mut v.dh.style,
-        } = settings.style;
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Settings {
     pub algo: AlignAlgorithm,
     pub style: Style,
+}
+
+impl Settings {
+    fn config_path() -> Result<PathBuf, std::io::Error> {
+        let mut path = config_dir().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Could not find configuration directory",
+            )
+        })?;
+        path.push("biodiff");
+        Ok(path)
+    }
+    fn settings_file() -> Result<PathBuf, std::io::Error> {
+        let mut path = Self::config_path()?;
+        path.push("config.json");
+        Ok(path)
+    }
+    pub fn from_config() -> Option<Self> {
+        let config = read_to_string(Self::settings_file().ok()?).ok()?;
+        serde_json::from_str(&config).ok()
+    }
+
+    pub fn save_config(&self) -> Result<(), Box<dyn Error + 'static>> {
+        let config = serde_json::to_string(self)?;
+        let r = std::fs::create_dir(Self::config_path()?);
+        if let Err(ref e) = r {
+            match e.kind() {
+                std::io::ErrorKind::AlreadyExists => (),
+                _ => r?
+            }
+        }
+        std::fs::write(Self::settings_file()?, config)?;
+        Ok(())
+    }
 }
 
 /// An enum containing either an aligned or unaligned hexview, without

@@ -1,8 +1,8 @@
+use crate::backend::{Backend, Color, Effect};
+use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
 
-use crate::backend::{Backend, Color, Effect};
-
-const MIDDLE_PAD: &str = "|";
+const MIDDLE_PAD: &str = " |";
 const ADDR_SIZE: usize = 11;
 
 /// Contains 8 digits of an address, with a space in between and at the front and end
@@ -127,7 +127,7 @@ fn color_from_mixed_bytes(a: Option<u8>, b: Option<u8>) -> Color {
 }
 
 #[repr(usize)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum DisplayMode {
     Hex = 0,
     Binary = 1,
@@ -356,7 +356,7 @@ impl CursorActive {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Style {
     pub mode: DisplayMode,
     pub ascii_col: bool,
@@ -368,11 +368,16 @@ impl Style {
         self.mode.size_per_byte() + self.ascii_col as usize
     }
     fn const_overhead(&self) -> usize {
-        let single_overheaad = ADDR_SIZE + if self.ascii_col { 1 } else { 0 };
+        let single_overhead = ADDR_SIZE
+            + if self.ascii_col {
+                MIDDLE_PAD.width()
+            } else {
+                0
+            };
         if self.vertical {
-            single_overheaad
+            single_overhead
         } else {
-            2 * single_overheaad + MIDDLE_PAD.width()
+            2 * single_overhead + MIDDLE_PAD.width()
         }
     }
     /// returns the number of columns that are displayed on a given display width
@@ -384,7 +389,7 @@ impl Style {
             rows - 2
         };
         if columns <= self.const_overhead() {
-            return (1, y)
+            return (1, y);
         }
         let max_col = (columns - self.const_overhead())
             / (self.size_per_byte() * if self.vertical { 1 } else { 2 });
@@ -448,7 +453,11 @@ impl DoubleHexContext {
     pub fn print_doublehex_screen<B: Backend>(&self, content: &[DoubleHexLine], backend: &mut B) {
         for (i, line) in content.iter().enumerate() {
             if self.style.vertical {
-                line.print_vert(backend, [i + 1, self.vert_half_height() + i + 1], self.style);
+                line.print_vert(
+                    backend,
+                    [i + 1, self.vert_half_height() + i + 1],
+                    self.style,
+                );
             } else {
                 // we offset because of the title bar
                 line.print_hor(backend, i + 1, self.style);
@@ -516,7 +525,11 @@ impl DoubleHexContext {
             0..(-scroll_amount) as usize
         } {
             if self.style.vertical {
-                content[line].print_vert(backend, [line + 1, self.vert_half_height() + line + 1], self.style)
+                content[line].print_vert(
+                    backend,
+                    [line + 1, self.vert_half_height() + line + 1],
+                    self.style,
+                )
             } else {
                 content[line].print_hor(backend, line + 1, self.style)
             }
@@ -601,8 +614,12 @@ impl DoubleHexContext {
         let short_second = shorten(second);
 
         let addrsize = ADDR_SIZE - 1;
-        let hexsize = self.cursor.get_size_x() * self.style.size_per_byte()
-            - if self.style.ascii_col { 0 } else { 1 };
+        let hexsize = self.cursor.get_size_x() * self.style.size_per_byte() - 1
+            + if self.style.ascii_col {
+                MIDDLE_PAD.width()
+            } else {
+                0
+            };
         let first_title = format!(
             "{:addrsize$} {:>hexsize$} ",
             short_title,
