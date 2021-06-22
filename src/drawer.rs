@@ -1,9 +1,8 @@
 use crate::backend::{Backend, Color, Effect};
 
-const MIDDLE_PAD: &str = "|";
+const MIDDLE_PAD: &str = "│";
 const ADDR_SIZE: usize = 11;
-const SIZE_PER_BYTE: usize = 3;
-const CONSTANT_OVERHEAD: usize = ADDR_SIZE * 2 + MIDDLE_PAD.len();
+const CONSTANT_OVERHEAD: usize = ADDR_SIZE * 2 + 1;
 
 /// Contains 8 digits of an address, with a space in between and at the front and end
 fn disp_addr(maddr: Option<usize>) -> String {
@@ -25,6 +24,29 @@ fn disp_hex(h: Option<u8>) -> String {
     }
 }
 
+fn disp_braille(h: Option<u8>) -> String {
+    match h {
+        Some(byte) => {
+            let reordered_byte = byte & 0x87 | byte >> 1 & 0x38 | byte << 3 & 0x40;
+            let braille_char = char::from_u32(0x2800u32 + reordered_byte as u32)
+                .expect("Could not convert to braille codepoint");
+            format!("│{}", braille_char)
+        }
+        None => String::from("  "),
+    }
+}
+
+fn disp_mixed(h: Option<u8>) -> String {
+    match h {
+        Some(c @ b'!'..=b'~') => format!("{} ", char::from_u32(c as u32 + 0xFF00 - 0x20).unwrap()),
+        Some(b' ') => String::from(".. "),
+        Some(b'\n') => String::from("\\n "),
+        Some(b'\t') => String::from("\\t "),
+        Some(b'\r') => String::from("\\r "),
+        Some(c) => format!("{:02x} ", c),
+        None => String::from("   "),
+    }
+}
 /// Insertions/Deletions are typically green, mismatches red and same bytes white
 fn color_from_bytes(a: Option<u8>, b: Option<u8>) -> Color {
     match (a, b) {
@@ -34,6 +56,62 @@ fn color_from_bytes(a: Option<u8>, b: Option<u8>) -> Color {
     }
 }
 
+/// Insertions/Deletions are typically green, mismatches red and same bytes white
+fn color_secondary_from_bytes(a: Option<u8>, b: Option<u8>) -> Color {
+    match (a, b) {
+        (Some(a), Some(b)) if a == b => Color::HexSameSecondary,
+        (Some(_), Some(_)) => Color::HexDiffSecondary,
+        (None, _) | (_, None) => Color::HexOnesideSecondary,
+    }
+}
+/// Insertions/Deletions are typically green, mismatches red and same bytes white
+fn color_from_mixed_bytes(a: Option<u8>, b: Option<u8>) -> Color {
+    if matches!(a, Some(b'!'..=b'~' | b' ' | b'\n' | b'\t' | b'\r')) {
+        color_from_bytes(a, b)
+    } else {
+        color_secondary_from_bytes(a, b)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum DisplayMode {
+    HexOnly,
+    HexAsciiMix,
+    Braille,
+}
+
+impl DisplayMode {
+    fn size_per_byte(&self) -> usize {
+        match self {
+            Self::HexOnly | Self::HexAsciiMix => 3,
+            Self::Braille => 2,
+        }
+    }
+    fn color(&self, a: Option<u8>, b: Option<u8>, row: usize) -> Color {
+        match self {
+            Self::HexOnly => color_from_bytes(a, b),
+            Self::HexAsciiMix => color_from_mixed_bytes(a, b),
+            Self::Braille => {
+                if row % 2 == 0 {
+                    color_from_bytes(a, b)
+                } else {
+                    color_secondary_from_bytes(a, b)
+                }
+            }
+        }
+    }
+    fn disp(&self, a: Option<u8>, short: bool) -> String {
+        let mut out = match self {
+            Self::HexOnly => disp_hex(a),
+            Self::HexAsciiMix => disp_mixed(a),
+            Self::Braille => disp_braille(a),
+        };
+        if short && matches!(self, Self::HexOnly | Self::HexAsciiMix) {
+            let _ = out.pop();
+        }
+        out
+    }
+}
 /// A line that can be printed using a backend for two hex views next to each other
 #[derive(Debug, Clone)]
 pub struct DoubleHexLine {
@@ -43,25 +121,27 @@ pub struct DoubleHexLine {
 
 impl DoubleHexLine {
     /// Prints the DoubleHexLine using the given backend at the line given in `line`
-    fn print<B: Backend>(&self, printer: &mut B, line: usize) {
+    fn print<B>(&self, printer: &mut B, line: usize, style: DisplayMode)
+    where
+        B: Backend,
+    {
         printer.set_line(line);
         printer.append_text(&disp_addr(self.address.0), Color::Unimportant, Effect::None);
         for (a, b) in &self.bytes {
-            let s = disp_hex(*a);
-            let color = color_from_bytes(*a, *b);
+            let s = style.disp(*a, false);
+            let color = style.color(*a, *b, line);
             printer.append_text(&s, color, Effect::None);
         }
 
         printer.append_text(MIDDLE_PAD, Color::Unimportant, Effect::None);
         printer.append_text(&disp_addr(self.address.1), Color::Unimportant, Effect::None);
         for (a, b) in &self.bytes {
-            let s = disp_hex(*b);
-            let color = color_from_bytes(*b, *a);
+            let s = style.disp(*b, false);
+            let color = style.color(*b, *a, line);
             printer.append_text(&s, color, Effect::None);
         }
     }
 }
-
 
 const VERTICAL_CURSOR_PAD: isize = 2;
 
@@ -103,7 +183,8 @@ impl CursorState {
     pub fn jump(&self, diff: isize) -> (isize, isize) {
         let front_column = self.cursor_pos.0 as isize + diff;
         let row_change = front_column.div_euclid(self.size.0 as isize);
-        let column_change = front_column.rem_euclid(self.size.0 as isize) - self.cursor_pos.0 as isize;
+        let column_change =
+            front_column.rem_euclid(self.size.0 as isize) - self.cursor_pos.0 as isize;
         (column_change, row_change)
     }
     /// gets the column of the cursor
@@ -182,9 +263,6 @@ impl CursorActive {
 }
 
 
-pub enum DisplayMode {
-    HexOnly,
-}
 pub struct DoubleHexContext {
     pub cursor: CursorState,
     pub mode: DisplayMode,
@@ -202,7 +280,7 @@ impl DoubleHexContext {
     pub fn print_doublehex_screen<B: Backend>(&self, content: &[DoubleHexLine], backend: &mut B) {
         for (i, line) in content.iter().enumerate() {
             // we offset because of the title bar
-            line.print(backend, i + 1);
+            line.print(backend, i + 1, self.mode);
         }
     }
 
@@ -226,7 +304,7 @@ impl DoubleHexContext {
         } else {
             0..(-scroll_amount) as usize
         } {
-            content[line].print(backend, line + 1);
+            content[line].print(backend, line + 1, self.mode)
         }
     }
 
@@ -236,7 +314,7 @@ impl DoubleHexContext {
         if columns <= CONSTANT_OVERHEAD {
             return 0;
         }
-        let max_col = (columns - CONSTANT_OVERHEAD) / (SIZE_PER_BYTE * 2);
+        let max_col = (columns - CONSTANT_OVERHEAD) / (self.mode.size_per_byte() * 2);
         if max_col < 8 {
             max_col
         } else if max_col < 24 {
@@ -268,21 +346,24 @@ impl DoubleHexContext {
 
         let cursor = &self.cursor;
         // left cursor
-        let left_x = ADDR_SIZE + cursor.get_x() * SIZE_PER_BYTE;
+        let left_x = ADDR_SIZE + cursor.get_x() * self.mode.size_per_byte();
         let left_effect = effect(active.is_left());
-        let left_color = color_from_bytes(at_cursor.0, at_cursor.1);
+        let left_color = self.mode.color(at_cursor.0, at_cursor.1, self.cursor.get_y() + 1);
+        let left_text = self.mode.disp(at_cursor.0, true);
         // note again that the title bar is skipped
         backend.set_pos(left_x, cursor.get_y() + 1);
         // we cut of the last byte of the disp_hex so that the space is not reverse video'd
-        backend.append_text(&disp_hex(at_cursor.0)[..2], left_color, left_effect);
+        backend.append_text(&left_text, left_color, left_effect);
 
         // right cursor
-        let right_x =
-            2 * ADDR_SIZE + (cursor.get_x() + cursor.get_size_x()) * SIZE_PER_BYTE + MIDDLE_PAD.len();
+        let right_x = 2 * ADDR_SIZE
+            + (cursor.get_x() + cursor.get_size_x()) * self.mode.size_per_byte()
+            + MIDDLE_PAD.chars().count();
         let right_effect = effect(active.is_right());
-        let right_color = color_from_bytes(at_cursor.1, at_cursor.0);
+        let right_color = self.mode.color(at_cursor.1, at_cursor.0, self.cursor.get_y() + 1);
+        let right_text = self.mode.disp(at_cursor.1, true);
         backend.set_pos(right_x, cursor.get_y() + 1);
-        backend.append_text(&disp_hex(at_cursor.1)[..2], right_color, right_effect);
+        backend.append_text(&right_text, right_color, right_effect);
     }
 
     /// prints the line at the top containing the filenames and status
@@ -296,10 +377,10 @@ impl DoubleHexContext {
         // function for truncating the string on the left when it is too long
         // also inserts an < to indicate that it was truncated
         let shorten = |s: &str| -> String {
-            if s.len() > SIZE_PER_BYTE * self.cursor.get_size_x() {
+            if s.len() > self.mode.size_per_byte() * self.cursor.get_size_x() {
                 s.chars()
                     .rev()
-                    .take(SIZE_PER_BYTE * self.cursor.get_size_x() - 2)
+                    .take(self.mode.size_per_byte() * self.cursor.get_size_x() - 2)
                     .collect::<Vec<_>>()
                     .into_iter()
                     .chain(std::iter::once('<'))
@@ -322,7 +403,7 @@ impl DoubleHexContext {
             " ",
             short_right,
             addrsize = ADDR_SIZE - 1,
-            hexsize = self.cursor.get_size_x() * SIZE_PER_BYTE - 1
+            hexsize = self.cursor.get_size_x() * self.mode.size_per_byte() - 1
         );
         printer.set_line(0);
         printer.append_text(&titlebar, Color::HexSame, Effect::Inverted);
@@ -336,7 +417,8 @@ impl DoubleHexContext {
             &format!(
                 "{:width$}",
                 BOTTOM_TEXT,
-                width = self.cursor.get_size_x() * 2 * SIZE_PER_BYTE + CONSTANT_OVERHEAD
+                width =
+                    self.cursor.get_size_x() * 2 * self.mode.size_per_byte() + CONSTANT_OVERHEAD
             ),
             Color::HexSame,
             Effect::Inverted,

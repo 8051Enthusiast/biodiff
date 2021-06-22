@@ -136,8 +136,11 @@ pub trait Backend {
 pub enum Color {
     Unimportant,
     HexSame,
+    HexSameSecondary,
     HexDiff,
+    HexDiffSecondary,
     HexOneside,
+    HexOnesideSecondary,
 }
 
 impl Color {
@@ -148,6 +151,9 @@ impl Color {
             Color::HexSame => CrossColor::White,
             Color::HexDiff => CrossColor::Red,
             Color::HexOneside => CrossColor::Green,
+            Color::HexSameSecondary => CrossColor::Yellow,
+            Color::HexDiffSecondary => CrossColor::DarkRed,
+            Color::HexOnesideSecondary => CrossColor::DarkGreen,
         }
     }
     /// Converts to a cursive color (with black background)
@@ -157,6 +163,9 @@ impl Color {
             Color::HexSame => theme::Color::Light(theme::BaseColor::White),
             Color::HexDiff => theme::Color::Light(theme::BaseColor::Red),
             Color::HexOneside => theme::Color::Light(theme::BaseColor::Green),
+            Color::HexSameSecondary => theme::Color::Light(theme::BaseColor::Yellow),
+            Color::HexDiffSecondary => theme::Color::Dark(theme::BaseColor::Red),
+            Color::HexOnesideSecondary => theme::Color::Dark(theme::BaseColor::Green),
         };
         theme::ColorStyle::new(col, theme::Color::Dark(theme::BaseColor::Black))
     }
@@ -380,7 +389,7 @@ impl<'a, 'b, 'c> Backend for Cursiv<'a, 'b, 'c> {
     }
 
     fn append_text(&mut self, text: &str, color: Color, effect: Effect) {
-        let len = text.len();
+        let len = text.chars().count();
         let style = theme::Style::none()
             .combine(color.to_cursiv())
             .combine(effect.to_cursiv());
