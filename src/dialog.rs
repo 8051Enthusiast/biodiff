@@ -128,10 +128,20 @@ fn apply_style(siv: &mut Cursive) {
         .find_name::<Checkbox>("ascii_col")
         .expect("Could not find ascii checkbox in settings")
         .is_checked();
+    new_style.mode = number_to_stylemode(
+        &siv.find_name::<SelectView<usize>>("display mode")
+            .expect("Could not find display mode select view")
+            .selected_id()
+            .expect("Display mode select view appears to be empty"),
+    );
     siv.user_data::<Settings>()
         .expect("Could not get align algorithm info from cursive")
         .style = new_style;
-    on_hexview(siv, move |v| v.dh.style = new_style, move |v| v.dh.style = new_style);
+    on_hexview(
+        siv,
+        move |v| v.dh.style = new_style,
+        move |v| v.dh.style = new_style,
+    );
     close_top_maybe_quit(siv)
 }
 
@@ -317,8 +327,15 @@ fn number_to_stylemode(x: &usize) -> DisplayMode {
 
 pub fn style(siv: &mut Cursive) -> impl View {
     let on_quit = |s: &mut Cursive| {
-        let old_style = s.user_data::<Settings>().expect("Could not get settings from cursive").style;
-        on_hexview(s, move |v| v.dh.style = old_style, move |v| v.dh.style = old_style);
+        let old_style = s
+            .user_data::<Settings>()
+            .expect("Could not get settings from cursive")
+            .style;
+        on_hexview(
+            s,
+            move |v| v.dh.style = old_style,
+            move |v| v.dh.style = old_style,
+        );
         close_top_maybe_quit(s);
     };
     let style_settings: Style = siv
@@ -354,13 +371,16 @@ pub fn style(siv: &mut Cursive) -> impl View {
                 move |v| v.dh.style.mode = mode,
                 move |v| v.dh.style.mode = mode,
             )
-        });
-    OnEventView::new(Dialog::around(
-        LinearLayout::horizontal()
-            .child(Panel::new(left_side))
-            .child(Panel::new(right_side)),
+        })
+        .with_name("display mode");
+    OnEventView::new(
+        Dialog::around(
+            LinearLayout::horizontal()
+                .child(Panel::new(left_side))
+                .child(Panel::new(right_side)),
+        )
+        .title("Style Settings"),
     )
-    .title("Style Settings"))
     .on_event(Key::F1, help_window(ALGORITHM_HELP))
     .on_event(Key::Esc, on_quit)
 }
