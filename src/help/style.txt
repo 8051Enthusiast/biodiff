@@ -18,9 +18,13 @@ one on the right. This option makes it so the split is vertical
 and the primary file is on top and the secondary one on the
 bottom.
 
-Hex Only
---------
+Hex
+---
 The default, shows byte values always as their values in base 16.
+
+Binary/Decimal/Octal
+--------------------
+Shows byte values as their values in base 2/10/8.
 
 Hex/Ascii Mixed
 ---------------
