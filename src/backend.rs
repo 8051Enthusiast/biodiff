@@ -359,7 +359,10 @@ impl Backend for Cross {
     }
 
     fn clear(&mut self) {
-        queue!(self.buffer, terminal::Clear(terminal::ClearType::All),)
+        self.prev_effect = Some(Attribute::NoReverse);
+        queue!(self.buffer, 
+            style::SetAttribute(Attribute::NoReverse),
+            terminal::Clear(terminal::ClearType::All),)
             .unwrap_or_else(quit_with_error("Could not clear screen"))
     }
 }
