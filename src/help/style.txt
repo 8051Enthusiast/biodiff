@@ -30,7 +30,7 @@ Hex/Ascii Mixed
 ---------------
 Shows bytes in the printable ASCII range as characters.
 Furthermore, also displays escape sequences \n, \r and \t.
-Space is displayed as two consecutive dots ("..").
+Space is displayed as a dotted underline ("﹍").
 If the byte does not match any of these criteria, it is displayed
 as the hex value.
 

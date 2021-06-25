@@ -62,7 +62,7 @@ fn disp_braille(h: Option<u8>) -> String {
 fn disp_mixed(h: Option<u8>) -> String {
     match h {
         Some(c @ b'!'..=b'~') => format!("{} ", char::from_u32(c as u32 + 0xFF00 - 0x20).unwrap()),
-        Some(b' ') => String::from(".. "),
+        Some(b' ') => String::from("﹍ "),
         Some(b'\n') => String::from("\\n "),
         Some(b'\t') => String::from("\\t "),
         Some(b'\r') => String::from("\\r "),
