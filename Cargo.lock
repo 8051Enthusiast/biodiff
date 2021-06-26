@@ -114,7 +114,7 @@ dependencies = [
 
 [[package]]
 name = "biodiff"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "bio",
  "crossbeam-utils",

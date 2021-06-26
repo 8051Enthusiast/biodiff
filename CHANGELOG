@@ -1,0 +1,7 @@
+0.2.0 (2021-06-21)
+==================
+
+* Load files using mmap if possible
+* Add new display mode for binary data, ascii bar and option to do either horizontal or vertical split between files
+* Allow saving settings permanently
+* Show current addresses of cursor in bottom right corner
