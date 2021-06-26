@@ -82,7 +82,7 @@ fn disp_mixed(h: Option<u8>) -> String {
 
 fn disp_ascii(h: Option<u8>) -> String {
     match h {
-        Some(c @ b'!'..=b'~') => c as char,
+        Some(c @ b' '..=b'~') => c as char,
         Some(_) => '.',
         None => ' ',
     }
