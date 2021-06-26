@@ -62,8 +62,12 @@ impl Unaligned {
     /// Paints the cursor at the current position
     fn set_cursor<B: Backend>(&self, printer: &mut B, cursor_act: CursorActive) {
         let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        let addr = (
+            self.data.get_first_addr(cursor_index),
+            self.data.get_second_addr(cursor_index),
+        );
         self.dh
-            .set_doublehex_cursor(printer, cursor_act, self.data.get(cursor_index));
+            .set_doublehex_cursor(printer, cursor_act, self.data.get(cursor_index), addr);
     }
     /// Converts the content of the CompVec into DoubleHexLines so they can be displayed
     fn get_content(&self) -> Vec<DoubleHexLine> {
@@ -86,7 +90,12 @@ impl Unaligned {
     fn print_bars<B: Backend>(&self, printer: &mut B) {
         self.dh
             .print_title_line(printer, " unaligned", &self.filenames.0, &self.filenames.1);
-        self.dh.print_bottom_line(printer);
+        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        let addr = (
+            self.data.get_first_addr(cursor_index),
+            self.data.get_second_addr(cursor_index),
+        );
+        self.dh.print_bottom_line(printer, addr);
     }
 
     /// moves the cursor xdiff down and ydiff to the right,
@@ -122,7 +131,9 @@ impl Unaligned {
             self.dh
                 .print_doublehex_scrolled(&content, printer, scroll_amount);
             self.set_cursor(printer, self.cursor_act);
-            self.print_bars(printer);
+            if scroll_amount != 0 {
+                self.print_bars(printer);
+            }
             printer.refresh();
         } else {
             self.redraw(printer, false);
@@ -330,21 +341,31 @@ impl Aligned {
     /// Paints the cursor at the current position
     fn set_cursor<B: Backend>(&self, printer: &mut B, cursor_act: CursorActive) {
         let cursor_index = self.index + self.dh.cursor.get_index() as isize;
-        self.dh.set_doublehex_cursor(
-            printer,
-            cursor_act,
-            self.data
-                .get(cursor_index)
-                .map(|alignel| (alignel.xbyte, alignel.ybyte))
-                .unwrap_or_default(),
-        );
+        let bytes = self
+            .data
+            .get(cursor_index)
+            .map(|alignel| (alignel.xbyte, alignel.ybyte))
+            .unwrap_or_default();
+        let addresses = self
+            .data
+            .get(cursor_index)
+            .map(|alignel| (Some(alignel.xaddr), Some(alignel.yaddr)))
+            .unwrap_or_default();
+        self.dh
+            .set_doublehex_cursor(printer, cursor_act, bytes, addresses);
     }
 
     /// Prints the top and bottom bar.
     fn print_bars<B: Backend>(&self, printer: &mut B) {
         self.dh
             .print_title_line(printer, " aligned", &self.filenames.0, &self.filenames.1);
-        self.dh.print_bottom_line(printer);
+        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        let addresses = self
+            .data
+            .get(cursor_index)
+            .map(|alignel| (Some(alignel.xaddr), Some(alignel.yaddr)))
+            .unwrap_or_default();
+        self.dh.print_bottom_line(printer, addresses);
     }
 
     /// Moves the cursor xdiff down and ydiff to the right,
@@ -368,7 +389,9 @@ impl Aligned {
             self.dh
                 .print_doublehex_scrolled(&content, printer, scroll_amount);
             self.set_cursor(printer, CursorActive::Both);
-            self.print_bars(printer);
+            if scroll_amount != 0 {
+                self.print_bars(printer);
+            }
             printer.refresh();
         } else {
             self.redraw(printer, false);

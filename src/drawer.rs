@@ -17,6 +17,15 @@ fn disp_addr(maddr: Option<usize>) -> String {
     }
 }
 
+/// Formats the addresses that get displayed on the lower right of the screen
+fn disp_bottom_addr(addresses: (Option<usize>, Option<usize>)) -> String {
+    let formatted = |addr: Option<usize>| {
+        addr.map(|x| format!("{:08x}", x))
+            .unwrap_or_else(|| String::from("        "))
+    };
+    format!(" {}|{} ", formatted(addresses.0), formatted(addresses.1))
+}
+
 /// Contains two hex digits of a byte and a space behind it, or just three spaces for None
 fn disp_hex(h: Option<u8>) -> String {
     match h {
@@ -547,6 +556,7 @@ impl DoubleHexContext {
         backend: &mut B,
         active: CursorActive,
         at_cursor: (Option<u8>, Option<u8>),
+        cursor_addr: (Option<usize>, Option<usize>),
     ) {
         // the cursor is displayed with reverse video
         let effect = |is_active| {
@@ -582,6 +592,14 @@ impl DoubleHexContext {
             backend.set_pos(sx, sy);
             backend.append_text(&disp_ascii(at_cursor.1), second_color, second_effect);
         }
+
+        // status bar address
+        let addr_print = disp_bottom_addr(cursor_addr);
+        backend.set_pos(
+            self.full_width().saturating_sub(addr_print.chars().count()),
+            self.full_height() - 1,
+        );
+        backend.append_text(&addr_print, Color::HexSame, Effect::Inverted);
     }
 
     /// prints the line at the top containing the filenames and status
@@ -645,15 +663,23 @@ impl DoubleHexContext {
     }
 
     /// Prints the bottom text containing key information
-    pub fn print_bottom_line<B: Backend>(&self, printer: &mut B) {
+    pub fn print_bottom_line<B: Backend>(
+        &self,
+        printer: &mut B,
+        addresses: (Option<usize>, Option<usize>),
+    ) {
         const BOTTOM_TEXT: &str = "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto";
+        let print_addr = disp_bottom_addr(addresses);
+        let info_width = self.full_width() - print_addr.chars().count();
+        let info_text: String = BOTTOM_TEXT
+            .chars()
+            .chain(std::iter::repeat(' '))
+            .take(info_width)
+            .chain(print_addr.chars())
+            .collect();
         let line = self.full_height() - 1;
         printer.set_line(line);
-        printer.append_text(
-            &format!("{:width$}", BOTTOM_TEXT, width = self.full_width()),
-            Color::HexSame,
-            Effect::Inverted,
-        );
+        printer.append_text(&info_text, Color::HexSame, Effect::Inverted);
         for line in self.full_height()..printer.size().1 {
             printer.set_line(line);
             printer.append_text(
