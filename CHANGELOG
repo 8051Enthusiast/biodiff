@@ -1,4 +1,10 @@
-0.2.0 (2021-06-21)
+0.2.1 (2021-06-27)
+==================
+* Add `git-biodiff` binary; this makes it possible to invoke biodiff when using git by using it as `git biodiff` the same way you would invoke `git diff`
+* Fix crash when resizing terminal to very small size in vertical split mode
+* Fix space bar doing page-down when the remainder of the files are the same instead of jumping to the end
+
+0.2.0 (2021-06-26)
 ==================
 
 * Load files using mmap if possible
