@@ -670,7 +670,7 @@ impl DoubleHexContext {
     ) {
         const BOTTOM_TEXT: &str = "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto";
         let print_addr = disp_bottom_addr(addresses);
-        let info_width = self.full_width() - print_addr.chars().count();
+        let info_width = self.full_width().saturating_sub(print_addr.chars().count());
         let info_text: String = BOTTOM_TEXT
             .chars()
             .chain(std::iter::repeat(' '))
