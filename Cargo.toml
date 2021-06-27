@@ -6,6 +6,7 @@ version = "0.2.0"
 authors = ["8051Enthusiast <8051Enthusiast@protonmail.com>"]
 edition = "2018"
 license = "MIT"
+default-run = "biodiff"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
