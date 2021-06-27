@@ -220,15 +220,15 @@ impl Unaligned {
             + self.dh.cursor.get_index() as isize
             + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.get_size_x() as isize)
             .clamp(self.data.bounds().start, self.data.bounds().end - 1);
-        let mut target_address = first_address;
+        let mut target_address = None;
         for i in first_address..self.data.bounds().end {
             let current = self.data.get(i);
             if current.0 != current.1 || (current.0.is_none() && current.1.is_none()) {
-                target_address = i;
+                target_address = Some(i);
                 break;
             }
         }
-        self.goto_index(printer, target_address);
+        self.goto_index(printer, target_address.unwrap_or(self.data.bounds().end));
     }
     /// Turns the view into most of its parts
     pub fn destruct(self) -> Result<(PointedFile, PointedFile, DoubleHexContext), Self> {
@@ -464,15 +464,15 @@ impl Aligned {
             + self.dh.cursor.get_index() as isize
             + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.get_size_x() as isize)
             .clamp(self.data.bounds().start, self.data.bounds().end - 1);
-        let mut target_address = first_address;
+        let mut target_address = None;
         for i in first_address..=self.data.bounds().end {
             let current = self.data.get(i);
             if current.map(|x| x.xbyte != x.ybyte).unwrap_or(true) {
-                target_address = i;
+                target_address = Some(i);
                 break;
             }
         }
-        self.goto_index(printer, target_address);
+        self.goto_index(printer, target_address.unwrap_or(self.data.bounds().end));
     }
     /// Process move events
     pub fn process_move<B: Backend>(&mut self, printer: &mut B, action: Action) {
