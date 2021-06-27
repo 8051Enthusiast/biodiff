@@ -1,7 +1,11 @@
 biodiff
 =======
 
+![Crates.io](https://img.shields.io/crates/v/biodiff)
+
 Compare binary files using alignment algorithms.
+
+![Terminal screenshot of biodiff. One can see two files displayed in hex above each other with an ascii column. There are areas that are skipped in one file and displayed in green in the other one. Common bytes are displayed as white and differing ones (aside from missing ones) as red.](https://user-images.githubusercontent.com/54916925/123559715-fda1aa80-d79d-11eb-8bcd-90316e388e48.png)
 
 What is this
 ------------
@@ -10,6 +14,7 @@ This is a tool for binary diffing.
 The tool is able to show two binary files side by side so that similar places will be at the same position on both sides
 and bytes missing from one side are padded.
 It uses bio-informatics algorithms from the [`rust-bio`](https://rust-bio.github.io/) library (typically used for DNA sequence alignment) for that.
+The dialog boxes for configuration are done using [`cursive`](https://github.com/gyscos/cursive).
 
 Usage
 -----
@@ -22,8 +27,6 @@ It is also possible to do global and local alignment (of the whole files at once
 Generally, since it takes quadratic time and space, the global/local alignment will not work well for files bigger than 64kB.
 There is also a "banded" algorithm which is faster, but slightly less accurate.
 
-It woul
-
 Installation
 ------------
 There should be downloadable binary files for some environments under the [releases page](https://github.com/8051Enthusiast/biodiff/releases).
@@ -33,4 +36,4 @@ You can also execute directly using code from this repository by executing `carg
 
 License
 -------
-This project is licensed under MIT.
+This project is licensed under the MIT license.
