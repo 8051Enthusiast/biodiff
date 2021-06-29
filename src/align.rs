@@ -3,9 +3,9 @@ use std::sync::mpsc::Sender;
 use crate::{utils::FileContent, view::AlignedMessage};
 use bio::alignment::{
     pairwise::{self, MatchFunc, Scoring},
-    Alignment, AlignmentOperation as Op,
+    AlignmentOperation as Op,
 };
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BLOCKSIZE: usize = 8192;
 pub const DEFAULT_KMER: usize = 8;
@@ -31,7 +31,10 @@ pub enum Banded {
     Banded { kmer: usize, window: usize },
 }
 impl Banded {
-    fn align<F: MatchFunc>(&self, scoring: Scoring<F>, x: &[u8], y: &[u8]) -> Alignment {
+    fn align<F: MatchFunc>(&self, scoring: Scoring<F>, x: &[u8], y: &[u8]) -> Vec<Op> {
+        if x == y {
+            return vec![Op::Match; x.len()];
+        }
         // note that we recreate the Aligner each call, but i don't think that part is expensive
         match self {
             Banded::Normal => pairwise::Aligner::with_scoring(scoring).custom(x, y),
@@ -39,6 +42,7 @@ impl Banded {
                 pairwise::banded::Aligner::with_scoring(scoring, *kmer, *window).custom(x, y)
             }
         }
+        .operations
     }
 }
 
@@ -198,7 +202,7 @@ fn align_whole<F: MatchFunc>(
     sender: Sender<AlignedMessage>,
 ) {
     let _ = sender.send(AlignedMessage::Append(
-        AlignElement::from_array(&band.align(scoring, &x, &y).operations, &x, &y, 0, 0).0,
+        AlignElement::from_array(&band.align(scoring, &x, &y), &x, &y, 0, 0).0,
     ));
 }
 
@@ -227,7 +231,7 @@ pub fn align_end<F: MatchFunc + Clone>(
         );
         // we only actually append at most half of the block size since we make sure gaps crossing
         // block boundaries are better detected
-        let ops = &end_aligned.operations[0..end_aligned.operations.len().min(block_size / 2)];
+        let ops = &end_aligned[0..end_aligned.len().min(block_size / 2)];
         // we will not progress like this, so might as well quit
         // might indicate an error
         if ops.is_empty() {
@@ -267,8 +271,7 @@ pub fn align_front<F: MatchFunc + Clone>(
         // unlike in align_end, we create the Alignelement from the whole array and then cut it
         // in half. This is because the addresses returned from from_array are at the end, which
         // we already know, so we instead take the start addresses from the array itself
-        let (end, _, _) =
-            AlignElement::from_array(&aligned.operations, &x, &y, lower_xaddr, lower_yaddr);
+        let (end, _, _) = AlignElement::from_array(&aligned, &x, &y, lower_xaddr, lower_yaddr);
         let real_end = Vec::from(&end[end.len().saturating_sub(block_size / 2)..end.len()]);
         // if this is empty, we will not progress, so just quit
         if real_end.is_empty() {
