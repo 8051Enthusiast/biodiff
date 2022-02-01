@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::backend::{Backend, Color, Effect};
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
@@ -246,7 +248,7 @@ impl DoubleHexLine {
     }
 }
 
-const VERTICAL_CURSOR_PAD: isize = 2;
+const VERTICAL_CURSOR_PAD: usize = 2;
 
 /// Keeps track of display dimensions and cursor position
 #[derive(Debug, Clone)]
@@ -260,14 +262,14 @@ impl CursorState {
     pub fn new(size: (usize, usize)) -> Self {
         Self {
             size,
-            cursor_pos: (0, VERTICAL_CURSOR_PAD as usize),
+            cursor_pos: (0, VERTICAL_CURSOR_PAD),
         }
     }
     /// Updates the screen size, changing the cursor position if neccessary.
     /// Returns the difference of the base address of the cursor view.
     pub fn resize(&mut self, size: (usize, usize)) -> isize {
         // refuse to resize too small and just keep the old size and draw nonsense instead
-        if size.0 < 1 || size.1 < 2 * VERTICAL_CURSOR_PAD as usize + 1 {
+        if size.0 < 1 || size.1 < 2 * VERTICAL_CURSOR_PAD + 1 {
             return 0;
         }
         let prev_index = self.get_index();
@@ -275,10 +277,7 @@ impl CursorState {
         // modulo is a nice operation for truncating this, since this
         // will keep addresses mostly aligned with 8 (or 4 for smaller sizes)
         self.cursor_pos.0 %= self.size.0;
-        self.cursor_pos.1 = self.cursor_pos.1.clamp(
-            VERTICAL_CURSOR_PAD as usize,
-            self.size.1 - 1 - VERTICAL_CURSOR_PAD as usize,
-        );
+        self.cursor_pos.1 = self.cursor_pos.1.clamp(self.min_row(), self.max_row());
         prev_index as isize - self.get_index() as isize
     }
     /// Jump the curser relative to current position.
@@ -313,14 +312,11 @@ impl CursorState {
     /// Moves the cursor xdiff columns and ydiff rows
     /// Returns the change of position of the underlying view into
     /// the grid
-    pub fn move_cursor(&mut self, xdiff: isize, ydiff: isize) -> isize {
+    pub fn move_cursor_unbounded(&mut self, xdiff: isize, ydiff: isize) -> isize {
         let new_x = self.get_x() as isize + xdiff;
         let new_y = self.get_y() as isize + ydiff;
         let actual_x = new_x.clamp(0, self.size.0 as isize - 1);
-        let actual_y = new_y.clamp(
-            VERTICAL_CURSOR_PAD,
-            self.size.1 as isize - 1 - VERTICAL_CURSOR_PAD,
-        );
+        let actual_y = new_y.clamp(self.min_row() as isize, self.max_row() as isize);
 
         self.cursor_pos = (actual_x as usize, actual_y as usize);
 
@@ -328,6 +324,64 @@ impl CursorState {
         let dev_y = new_y - actual_y;
 
         dev_y * self.size.0 as isize + dev_x
+    }
+    fn restrict_xdiff(&self, xdiff: isize, bounds: Range<isize>) -> isize {
+        let cursor_pos = self.get_index() as isize;
+        let xdiff_bounds = (bounds.start - cursor_pos)..(bounds.end - cursor_pos);
+        xdiff.clamp(xdiff_bounds.start, xdiff_bounds.end - 1)
+    }
+    fn restrict_ydiff(&self, ydiff: isize, bounds: Range<isize>) -> isize {
+        let cursor_pos = self.get_index() as isize;
+        let width = self.get_size_x() as isize;
+        let ydiff_bounds = ((bounds.start - cursor_pos) / width)..((bounds.end - cursor_pos - 1) / width);
+        ydiff.clamp(ydiff_bounds.start, ydiff_bounds.end)
+    }
+    pub fn move_cursor_x_bounded(&mut self, xdiff: isize, bounds: Range<isize>) -> isize {
+        if bounds.is_empty() {
+            return 0
+        }
+        self.move_cursor_unbounded(self.restrict_xdiff(xdiff, bounds), 0)
+    }
+    pub fn move_cursor_y_bounded(&mut self, ydiff: isize, bounds: Range<isize>) -> isize {
+        if bounds.is_empty() {
+            return 0
+        }
+        self.move_cursor_unbounded(0, self.restrict_ydiff(ydiff, bounds))
+    }
+    pub fn move_view_x_bounded(&mut self, xdiff: isize, bounds: Range<isize>) -> isize {
+        if bounds.is_empty() {
+            return 0
+        }
+        let width = self.get_size_x() as isize;
+        let old_cursor_x = self.get_x() as isize;
+        let new_cursor_x = (old_cursor_x - xdiff).clamp(0, width - 1);
+
+        let actual_xdiff = self.restrict_xdiff(xdiff - old_cursor_x + new_cursor_x, bounds) + old_cursor_x - new_cursor_x;
+        self.cursor_pos = (new_cursor_x as usize, self.get_y());
+
+        actual_xdiff
+    }
+    pub fn move_view_y_bounded(&mut self, ydiff: isize, bounds: Range<isize>) -> isize {
+        if bounds.is_empty() {
+            return 0
+        }
+        let width = self.get_size_x() as isize;
+        let old_cursor_y = self.get_y() as isize;
+        let new_cursor_y = (old_cursor_y - ydiff).clamp(self.min_row() as isize, self.max_row() as isize);
+
+        let actual_ydiff = self.restrict_ydiff(ydiff - old_cursor_y + new_cursor_y, bounds) + old_cursor_y - new_cursor_y;
+        self.cursor_pos = (self.get_x(), new_cursor_y as usize);
+
+        actual_ydiff * width
+    }
+    pub fn mov(&mut self, movement: Move, bounds: Range<isize>) -> isize {
+        match movement {
+            Move::Unbounded(xdiff, ydiff) => self.move_cursor_unbounded(xdiff, ydiff),
+            Move::CursorX(xdiff) => self.move_cursor_x_bounded(xdiff, bounds),
+            Move::CursorY(ydiff) => self.move_cursor_y_bounded(ydiff, bounds),
+            Move::ViewX(xdiff) => self.move_view_x_bounded(xdiff, bounds),
+            Move::ViewY(ydiff) => self.move_view_y_bounded(ydiff, bounds),
+        }
     }
     /// returns Some(amount of rows) if the difference given as argument
     /// is a multiple of the number of columns, otherwise None
@@ -338,10 +392,18 @@ impl CursorState {
             None
         }
     }
+    /// returns the maximum row the cursor may be at
+    fn max_row(&self) -> usize {
+        self.size.1.saturating_sub(VERTICAL_CURSOR_PAD + 1)
+    }
+    /// returns the minimum row the cursor may be at
+    fn min_row(&self) -> usize {
+        VERTICAL_CURSOR_PAD
+    }
 }
 
 /// An enum for keeping track which views a cursor is enabled in
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorActive {
     Both,
     First,
@@ -365,6 +427,14 @@ impl CursorActive {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Move {
+    Unbounded(isize, isize),
+    CursorX(isize),
+    CursorY(isize),
+    ViewX(isize),
+    ViewY(isize),
+}
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Style {
     pub mode: DisplayMode,

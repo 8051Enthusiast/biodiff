@@ -6,7 +6,7 @@ use crate::{
     align::{AlignAlgorithm, AlignElement},
     backend::{Action, Backend, Cursiv},
     datastruct::{CompVec, DoubleVec, SignedArray},
-    drawer::{CursorActive, DoubleHexContext, DoubleHexLine},
+    drawer::{CursorActive, DoubleHexContext, DoubleHexLine, Move},
     utils::{FileContent, PointedFile},
 };
 
@@ -98,27 +98,35 @@ impl Unaligned {
         self.dh.print_bottom_line(printer, addr);
     }
 
+    fn active_data_bounds(&self) -> Range<isize> {
+        match self.cursor_act {
+            CursorActive::Both | CursorActive::None => self.data.bounds(),
+            CursorActive::First => 0..self.data.get_data().0.len() as isize,
+            CursorActive::Second => {
+                self.data.shift..self.data.shift + self.data.get_data().1.len() as isize
+            }
+        }
+    }
     /// moves the cursor xdiff down and ydiff to the right,
     /// redrawing/scrolling if necessary
     pub fn move_around<B: Backend>(
         &mut self,
         printer: &mut B,
-        xdiff: isize,
-        ydiff: isize,
-        cursor: bool,
+        movement: Move,
     ) {
         self.set_cursor(printer, CursorActive::None);
-        // update cursor if updating the cursor is wanted, otherwise only change the view position
-        let diff = if cursor {
-            self.dh.cursor.move_cursor(xdiff, ydiff)
-        } else {
-            self.dh.cursor.get_size_x() as isize * ydiff + xdiff
-        };
+        let bounds = self.active_data_bounds();
+        let relative_bounds = (bounds.start - self.index)..(bounds.end - self.index);
+        let diff = self.dh.cursor.mov(movement, relative_bounds);
         // update the compvec in case the views are moved independently
         let index_diff = match self.cursor_act {
             CursorActive::Both => diff,
-            CursorActive::First => self.data.add_first_shift(-diff),
-            CursorActive::Second => self.data.add_second_shift(-diff),
+            CursorActive::First => {
+                self.data.add_first_shift(-diff)
+            }
+            CursorActive::Second => {
+                self.data.add_second_shift(-diff)
+            }
             CursorActive::None => diff,
         };
         self.index += index_diff;
@@ -142,24 +150,25 @@ impl Unaligned {
     /// Function that processes only the move events
     pub fn process_move<B: Backend>(&mut self, printer: &mut B, action: Action) {
         match action {
-            Action::Down => self.move_around(printer, 0, 1, true),
-            Action::DownAlt => self.move_around(printer, 0, 1, false),
-            Action::Up => self.move_around(printer, 0, -1, true),
-            Action::UpAlt => self.move_around(printer, 0, -1, false),
-            Action::Left => self.move_around(printer, -1, 0, true),
-            Action::LeftAlt => self.move_around(printer, -1, 0, false),
-            Action::Right => self.move_around(printer, 1, 0, true),
-            Action::RightAlt => self.move_around(printer, 1, 0, false),
-            Action::PgDown => {
-                self.move_around(printer, 0, self.dh.cursor.get_size_y() as isize / 2, false)
-            }
+            Action::Down => self.move_around(printer, Move::CursorY(1)),
+            Action::DownAlt => self.move_around(printer, Move::ViewY(1)),
+            Action::Up => self.move_around(printer, Move::CursorY(-1)),
+            Action::UpAlt => self.move_around(printer, Move::ViewY(-1)),
+            Action::Left => self.move_around(printer, Move::CursorX(-1)),
+            Action::LeftAlt => self.move_around(printer, Move::ViewX(-1)),
+            Action::Right => self.move_around(printer, Move::CursorX(1)),
+            Action::RightAlt => self.move_around(printer, Move::ViewX(1)),
+            Action::PgDown => self.move_around(
+                printer,
+                Move::ViewY(self.dh.cursor.get_size_y() as isize / 2),
+            ),
             Action::PgUp => self.move_around(
                 printer,
-                0,
-                -(self.dh.cursor.get_size_y() as isize) / 2,
-                false,
+                Move::ViewY(-(self.dh.cursor.get_size_y() as isize) / 2),
             ),
             Action::NextDifference => self.jump_next_difference(printer),
+            Action::Top => self.jump_start(printer),
+            Action::Bottom => self.jump_end(printer),
             _ => (),
         }
     }
@@ -188,8 +197,7 @@ impl Unaligned {
     pub fn goto_index<B: Backend>(&mut self, printer: &mut B, index: isize) {
         let address_diff = index - (self.index + self.dh.cursor.get_index() as isize);
         let (col, row) = self.dh.cursor.jump(address_diff);
-        self.move_around(printer, 0, row, false);
-        self.move_around(printer, col, 0, true);
+        self.move_around(printer, Move::Unbounded(col, row));
     }
     /// Go to the address in `pos`, right is true if on the second view, else the first view is used.
     /// Returns true if the address exists.
@@ -228,7 +236,20 @@ impl Unaligned {
                 break;
             }
         }
-        self.goto_index(printer, target_address.unwrap_or(self.data.bounds().end));
+        self.goto_index(
+            printer,
+            target_address.unwrap_or(self.data.bounds().end - 1),
+        );
+    }
+    /// Go to the first position of the file
+    pub fn jump_start<B: Backend>(&mut self, printer: &mut B) {
+        let index = self.active_data_bounds().start;
+        self.goto_index(printer, index)
+    }
+    /// Go to the last position of the file
+    pub fn jump_end<B: Backend>(&mut self, printer: &mut B) {
+        let index = self.active_data_bounds().end - 1;
+        self.goto_index(printer, index)
     }
     /// Turns the view into most of its parts
     pub fn destruct(self) -> Result<(PointedFile, PointedFile, DoubleHexContext), Self> {
@@ -370,19 +391,11 @@ impl Aligned {
 
     /// Moves the cursor xdiff down and ydiff to the right,
     /// redrawing/scrolling if necessary.
-    pub fn move_around<B: Backend>(
-        &mut self,
-        printer: &mut B,
-        xdiff: isize,
-        ydiff: isize,
-        cursor: bool,
-    ) {
+    pub fn move_around<B: Backend>(&mut self, printer: &mut B, movement: Move) {
         self.set_cursor(printer, CursorActive::None);
-        let index_diff = if cursor {
-            self.dh.cursor.move_cursor(xdiff, ydiff)
-        } else {
-            self.dh.cursor.get_size_x() as isize * ydiff + xdiff
-        };
+        let relative_bounds =
+            (self.data.bounds().start - self.index)..(self.data.bounds().end - self.index);
+        let index_diff = self.dh.cursor.mov(movement, relative_bounds);
         self.index += index_diff;
         if let Some(scroll_amount) = self.dh.cursor.full_row_move(index_diff) {
             let content = self.get_content();
@@ -438,8 +451,7 @@ impl Aligned {
     pub fn goto_index<B: Backend>(&mut self, printer: &mut B, index: isize) {
         let address_diff = index - (self.index + self.dh.cursor.get_index() as isize);
         let (col, row) = self.dh.cursor.jump(address_diff);
-        self.move_around(printer, 0, row, false);
-        self.move_around(printer, col, 0, true);
+        self.move_around(printer, Move::Unbounded(col, row));
     }
     /// Go to the address in `pos`, right is true if on the second view, else the first view is used.
     /// Returns true if the address exists.
@@ -472,29 +484,41 @@ impl Aligned {
                 break;
             }
         }
-        self.goto_index(printer, target_address.unwrap_or(self.data.bounds().end));
+        self.goto_index(
+            printer,
+            target_address.unwrap_or(self.data.bounds().end - 1),
+        );
+    }
+    /// Go to the first position of the file
+    pub fn jump_start<B: Backend>(&mut self, printer: &mut B) {
+        self.goto_index(printer, self.data.bounds().start)
+    }
+    /// Go to the last position of the file
+    pub fn jump_end<B: Backend>(&mut self, printer: &mut B) {
+        self.goto_index(printer, self.data.bounds().end)
     }
     /// Process move events
     pub fn process_move<B: Backend>(&mut self, printer: &mut B, action: Action) {
         match action {
-            Action::Down => self.move_around(printer, 0, 1, true),
-            Action::DownAlt => self.move_around(printer, 0, 1, false),
-            Action::Up => self.move_around(printer, 0, -1, true),
-            Action::UpAlt => self.move_around(printer, 0, -1, false),
-            Action::Left => self.move_around(printer, -1, 0, true),
-            Action::LeftAlt => self.move_around(printer, -1, 0, false),
-            Action::Right => self.move_around(printer, 1, 0, true),
-            Action::RightAlt => self.move_around(printer, 1, 0, false),
-            Action::PgDown => {
-                self.move_around(printer, 0, self.dh.cursor.get_size_y() as isize / 2, false)
-            }
+            Action::Down => self.move_around(printer, Move::CursorY(1)),
+            Action::DownAlt => self.move_around(printer, Move::ViewY(1)),
+            Action::Up => self.move_around(printer, Move::CursorY(-1)),
+            Action::UpAlt => self.move_around(printer, Move::ViewY(-1)),
+            Action::Left => self.move_around(printer, Move::CursorX(-1)),
+            Action::LeftAlt => self.move_around(printer, Move::ViewX(-1)),
+            Action::Right => self.move_around(printer, Move::CursorX(1)),
+            Action::RightAlt => self.move_around(printer, Move::ViewX(1)),
+            Action::PgDown => self.move_around(
+                printer,
+                Move::ViewY(self.dh.cursor.get_size_y() as isize / 2),
+            ),
             Action::PgUp => self.move_around(
                 printer,
-                0,
-                -(self.dh.cursor.get_size_y() as isize) / 2,
-                false,
+                Move::ViewY(-(self.dh.cursor.get_size_y() as isize) / 2),
             ),
             Action::NextDifference => self.jump_next_difference(printer),
+            Action::Top => self.jump_start(printer),
+            Action::Bottom => self.jump_end(printer),
             _ => (),
         }
     }

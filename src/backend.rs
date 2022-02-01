@@ -36,6 +36,8 @@ pub enum Action {
     Algorithm,
     Refresh,
     Goto,
+    Top,
+    Bottom,
     CursorFirst,
     CursorBoth,
     CursorSecond,
@@ -83,6 +85,8 @@ impl TryFrom<Event> for Action {
                 KeyCode::Char('5') => Action::Refresh,
                 KeyCode::F(6) => Action::Goto,
                 KeyCode::Char('6') => Action::Goto,
+                KeyCode::Home => Action::Top,
+                KeyCode::End => Action::Bottom,
                 _ => return Err(()),
             },
         )
