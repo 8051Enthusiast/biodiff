@@ -8,7 +8,7 @@ use cursive::{
     views::{LayerPosition, NamedView},
     View,
 };
-use cursive::{traits::Boxable, views::ResizedView, Cursive};
+use cursive::{traits::Resizable, views::ResizedView, Cursive};
 use cursive_buffered_backend::BufferedBackend;
 use dirs::config_dir;
 use serde::{Deserialize, Serialize};
