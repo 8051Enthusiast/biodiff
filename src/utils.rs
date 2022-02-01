@@ -14,8 +14,8 @@ impl Deref for MaybeMapped {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            MaybeMapped::Mapped(m) => &m,
-            MaybeMapped::Vector(v) => &v,
+            MaybeMapped::Mapped(m) => m,
+            MaybeMapped::Vector(v) => v,
         }
     }
 }

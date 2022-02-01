@@ -71,7 +71,7 @@ impl<T: Clone> SignedArray for DoubleVec<T> {
 }
 
 /// A vector consisting of two arrays, the second one being at an
-/// offset of the second one.
+/// offset of the second one, with at least one byte of overlap
 pub struct CompVec {
     pub xvec: FileContent,
     pub yvec: FileContent,
@@ -87,15 +87,24 @@ impl CompVec {
             shift: 0,
         }
     }
+    // adds relative_shift to self.shift, ensuring that the arrays
+    // still overlap and returns the actual relative shift applied
+    fn modify_shift(&mut self, relative_shift: isize) -> isize {
+        let shift_range = -(self.yvec.len() as isize - 1)..self.xvec.len() as isize;
+        let old_shift = self.shift;
+        let proposed_shift = old_shift + relative_shift;
+        self.shift = proposed_shift.clamp(shift_range.start, shift_range.end - 1);
+
+        self.shift - old_shift
+    }
     /// Adds a shift to the left vector, returns the change of index to the same element
     pub fn add_first_shift(&mut self, relative_shift: isize) -> isize {
-        self.shift -= relative_shift;
+        self.modify_shift(-relative_shift);
         -relative_shift
     }
     /// Adds a shift to the right vector, returns the change of index to the same element
     pub fn add_second_shift(&mut self, relative_shift: isize) -> isize {
-        self.shift += relative_shift;
-        0
+        -relative_shift + self.modify_shift(relative_shift)
     }
     /// Gets the address of the left vector at a given index
     pub fn get_first_addr(&self, index: isize) -> Option<usize> {
