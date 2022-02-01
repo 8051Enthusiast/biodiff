@@ -61,13 +61,19 @@ impl Unaligned {
     }
     /// Paints the cursor at the current position
     fn set_cursor<B: Backend>(&self, printer: &mut B, cursor_act: CursorActive) {
-        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        let cursor_index = self.cursor_index();
         let addr = (
             self.data.get_first_addr(cursor_index),
             self.data.get_second_addr(cursor_index),
         );
         self.dh
             .set_doublehex_cursor(printer, cursor_act, self.data.get(cursor_index), addr);
+    }
+    fn change_active_cursor<B: Backend>(&mut self, printer: &mut B, cursor_act: CursorActive) {
+        self.cursor_act = cursor_act;
+        self.move_back_into_bounds(printer);
+        self.set_cursor(printer, cursor_act);
+        printer.refresh()
     }
     /// Converts the content of the CompVec into DoubleHexLines so they can be displayed
     fn get_content(&self) -> Vec<DoubleHexLine> {
@@ -90,7 +96,7 @@ impl Unaligned {
     fn print_bars<B: Backend>(&self, printer: &mut B) {
         self.dh
             .print_title_line(printer, " unaligned", &self.filenames.0, &self.filenames.1);
-        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        let cursor_index = self.cursor_index();
         let addr = (
             self.data.get_first_addr(cursor_index),
             self.data.get_second_addr(cursor_index),
@@ -107,13 +113,28 @@ impl Unaligned {
             }
         }
     }
+    fn cursor_index(&self) -> isize {
+        self.index + self.dh.cursor.get_index() as isize
+    }
+    pub fn move_back_into_bounds<B: Backend>(&mut self, printer: &mut B) {
+        let old_active = self.cursor_act;
+        let bounds = self.active_data_bounds();
+        self.cursor_act = CursorActive::Both;
+        let cursor_pos = self.cursor_index();
+        let new_index = if cursor_pos < bounds.start {
+            bounds.start
+        } else if cursor_pos >= bounds.end {
+            bounds.end - 1
+        } else {
+            self.cursor_act = old_active;
+            return;
+        };
+        self.goto_index(printer, new_index);
+        self.cursor_act = old_active;
+    }
     /// moves the cursor xdiff down and ydiff to the right,
     /// redrawing/scrolling if necessary
-    pub fn move_around<B: Backend>(
-        &mut self,
-        printer: &mut B,
-        movement: Move,
-    ) {
+    pub fn move_around<B: Backend>(&mut self, printer: &mut B, movement: Move) {
         self.set_cursor(printer, CursorActive::None);
         let bounds = self.active_data_bounds();
         let relative_bounds = (bounds.start - self.index)..(bounds.end - self.index);
@@ -121,12 +142,8 @@ impl Unaligned {
         // update the compvec in case the views are moved independently
         let index_diff = match self.cursor_act {
             CursorActive::Both => diff,
-            CursorActive::First => {
-                self.data.add_first_shift(-diff)
-            }
-            CursorActive::Second => {
-                self.data.add_second_shift(-diff)
-            }
+            CursorActive::First => self.data.add_first_shift(-diff),
+            CursorActive::Second => self.data.add_second_shift(-diff),
             CursorActive::None => diff,
         };
         self.index += index_diff;
@@ -176,26 +193,14 @@ impl Unaligned {
     pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: Action) {
         match action {
             Action::Refresh => self.refresh(printer),
-            Action::CursorFirst => {
-                self.cursor_act = CursorActive::First;
-                self.set_cursor(printer, CursorActive::First);
-                printer.refresh()
-            }
-            Action::CursorBoth => {
-                self.cursor_act = CursorActive::Both;
-                self.set_cursor(printer, CursorActive::Both);
-                printer.refresh()
-            }
-            Action::CursorSecond => {
-                self.cursor_act = CursorActive::Second;
-                self.set_cursor(printer, CursorActive::Second);
-                printer.refresh()
-            }
+            Action::CursorFirst => self.change_active_cursor(printer, CursorActive::First),
+            Action::CursorBoth => self.change_active_cursor(printer, CursorActive::Both),
+            Action::CursorSecond => self.change_active_cursor(printer, CursorActive::Second),
             otherwise => self.process_move(printer, otherwise),
         }
     }
     pub fn goto_index<B: Backend>(&mut self, printer: &mut B, index: isize) {
-        let address_diff = index - (self.index + self.dh.cursor.get_index() as isize);
+        let address_diff = index - self.cursor_index();
         let (col, row) = self.dh.cursor.jump(address_diff);
         self.move_around(printer, Move::Unbounded(col, row));
     }
@@ -224,8 +229,7 @@ impl Unaligned {
     }
     pub fn jump_next_difference<B: Backend>(&mut self, printer: &mut B) {
         // skip half a page
-        let first_address = (self.index
-            + self.dh.cursor.get_index() as isize
+        let first_address = (self.cursor_index()
             + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.get_size_x() as isize)
             .clamp(self.data.bounds().start, self.data.bounds().end - 1);
         let mut target_address = None;
@@ -253,7 +257,7 @@ impl Unaligned {
     }
     /// Turns the view into most of its parts
     pub fn destruct(self) -> Result<(PointedFile, PointedFile, DoubleHexContext), Self> {
-        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        let cursor_index = self.cursor_index();
         // for now we only return if the cursor is at a positions where both indexes are actually
         // inside the file
         if let (Some(laddr), Some(raddr)) = (
@@ -359,9 +363,12 @@ impl Aligned {
         }
         content
     }
+    fn cursor_index(&self) -> isize {
+        self.index + self.dh.cursor.get_index() as isize
+    }
     /// Paints the cursor at the current position
     fn set_cursor<B: Backend>(&self, printer: &mut B, cursor_act: CursorActive) {
-        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        let cursor_index = self.cursor_index();
         let bytes = self
             .data
             .get(cursor_index)
@@ -380,7 +387,7 @@ impl Aligned {
     fn print_bars<B: Backend>(&self, printer: &mut B) {
         self.dh
             .print_title_line(printer, " aligned", &self.filenames.0, &self.filenames.1);
-        let cursor_index = self.index + self.dh.cursor.get_index() as isize;
+        let cursor_index = self.cursor_index();
         let addresses = self
             .data
             .get(cursor_index)
@@ -449,7 +456,7 @@ impl Aligned {
         self.redraw(printer, changed);
     }
     pub fn goto_index<B: Backend>(&mut self, printer: &mut B, index: isize) {
-        let address_diff = index - (self.index + self.dh.cursor.get_index() as isize);
+        let address_diff = index - self.cursor_index();
         let (col, row) = self.dh.cursor.jump(address_diff);
         self.move_around(printer, Move::Unbounded(col, row));
     }
@@ -472,8 +479,7 @@ impl Aligned {
     }
     pub fn jump_next_difference<B: Backend>(&mut self, printer: &mut B) {
         // skip half a page
-        let first_address = (self.index
-            + self.dh.cursor.get_index() as isize
+        let first_address = (self.cursor_index()
             + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.get_size_x() as isize)
             .clamp(self.data.bounds().start, self.data.bounds().end - 1);
         let mut target_address = None;
@@ -546,11 +552,7 @@ impl Aligned {
     /// Turn an Aligned view into its part, including information on where it points
     pub fn destruct(self) -> Result<(PointedFile, PointedFile, DoubleHexContext), Self> {
         // we return the original view in case the cursor is outside the files
-        match (self
-            .data
-            .get(self.index + self.dh.cursor.get_index() as isize))
-        .map(|a| (a.xaddr, a.yaddr))
-        {
+        match (self.data.get(self.cursor_index())).map(|a| (a.xaddr, a.yaddr)) {
             Some((xaddr, yaddr)) => Ok((
                 PointedFile {
                     name: self.filenames.0,
