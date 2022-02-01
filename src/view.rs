@@ -495,7 +495,7 @@ impl Aligned {
     }
     /// Go to the last position of the file
     pub fn jump_end<B: Backend>(&mut self, printer: &mut B) {
-        self.goto_index(printer, self.data.bounds().end)
+        self.goto_index(printer, self.data.bounds().end - 1)
     }
     /// Process move events
     pub fn process_move<B: Backend>(&mut self, printer: &mut B, action: Action) {
