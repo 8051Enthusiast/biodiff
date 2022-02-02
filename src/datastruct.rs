@@ -127,6 +127,12 @@ impl CompVec {
     pub fn get_data(&self) -> (FileContent, FileContent) {
         (self.xvec.clone(), self.yvec.clone())
     }
+    pub fn first_bound(&self) -> Range<isize> {
+        0..self.xvec.len() as isize
+    }
+    pub fn second_bound(&self) -> Range<isize> {
+        self.shift..self.shift as isize + self.yvec.len() as isize
+    }
 }
 
 impl SignedArray for CompVec {

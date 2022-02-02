@@ -107,10 +107,8 @@ impl Unaligned {
     fn active_data_bounds(&self) -> Range<isize> {
         match self.cursor_act {
             CursorActive::Both | CursorActive::None => self.data.bounds(),
-            CursorActive::First => 0..self.data.get_data().0.len() as isize,
-            CursorActive::Second => {
-                self.data.shift..self.data.shift + self.data.get_data().1.len() as isize
-            }
+            CursorActive::First => self.data.first_bound(),
+            CursorActive::Second => self.data.second_bound(),
         }
     }
     fn cursor_index(&self) -> isize {
@@ -225,6 +223,17 @@ impl Unaligned {
             return Err(
                 "Attempting to search on second view, but current cursor is on first view".into(),
             );
+        }
+        let bounds = if !right {
+            0..self.data.get_data().0.len()
+        } else {
+            0..self.data.get_data().1.len()
+        };
+        if !bounds.contains(&pos) {
+            return Err(format!(
+                "Target address {:#x} is not in bounds (< {:#x})",
+                pos, bounds.end
+            ));
         }
         self.goto_index(
             printer,
