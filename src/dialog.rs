@@ -131,6 +131,10 @@ fn apply_style(siv: &mut Cursive) {
         .find_name::<Checkbox>("vertical")
         .expect("Could not find vertical checkbox in settings")
         .is_checked();
+    let spacer = siv
+        .find_name::<Checkbox>("spacer")
+        .expect("Could not find spacer checkbox in settings")
+        .is_checked();
     let mode = number_to_stylemode(
         &siv.find_name::<SelectView<usize>>("display mode")
             .expect("Could not find display mode select view")
@@ -141,6 +145,7 @@ fn apply_style(siv: &mut Cursive) {
         mode,
         ascii_col,
         vertical,
+        spacer,
     };
     siv.user_data::<Settings>()
         .expect("Could not get align algorithm info from cursive")
@@ -382,6 +387,19 @@ pub fn style(siv: &mut Cursive) -> impl View {
                             )
                         })
                         .with_name("vertical"),
+                )
+                .child(
+                    "Hex Spacer:",
+                    Checkbox::new()
+                        .with_checked(style_settings.spacer)
+                        .on_change(|s, check| {
+                            on_hexview(
+                                s,
+                                move |v| v.dh.style.spacer = check,
+                                move |v| v.dh.style.spacer = check,
+                            )
+                        })
+                        .with_name("spacer"),
                 ),
         )
         .child(Button::new("OK", apply_style))

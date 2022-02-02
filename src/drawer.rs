@@ -6,6 +6,7 @@ use unicode_width::UnicodeWidthStr;
 
 const MIDDLE_PAD: &str = " |";
 const ADDR_SIZE: usize = 11;
+const SPACER_PERIOD: usize = 8;
 
 /// Contains 8 digits of an address, with a space in between and at the front and end
 fn disp_addr(maddr: Option<usize>) -> String {
@@ -215,10 +216,14 @@ impl DoubleHexLine {
             .map(|(a, b)| if first { (*a, *b) } else { (*b, *a) })
             .collect();
         printer.append_text(&disp_addr(address), Color::Unimportant, Effect::None);
-        for (a, b) in &bytes {
+        let width = self.bytes.len();
+        for (i, (a, b)) in bytes.iter().enumerate() {
             let s = style.mode.disp(*a, false);
             let color = style.mode.color(*a, *b, line);
             printer.append_text(&s, color, Effect::None);
+            if style.spacer && i + 1 != width && i % 8 == 7 {
+                printer.append_text(" ", color, Effect::None);
+            }
         }
         if style.ascii_col {
             printer.append_text(MIDDLE_PAD, Color::Unimportant, Effect::None);
@@ -333,43 +338,49 @@ impl CursorState {
     fn restrict_ydiff(&self, ydiff: isize, bounds: Range<isize>) -> isize {
         let cursor_pos = self.get_index() as isize;
         let width = self.get_size_x() as isize;
-        let ydiff_bounds = ((bounds.start - cursor_pos) / width)..((bounds.end - cursor_pos - 1) / width);
+        let ydiff_bounds =
+            ((bounds.start - cursor_pos) / width)..((bounds.end - cursor_pos - 1) / width);
         ydiff.clamp(ydiff_bounds.start, ydiff_bounds.end)
     }
     pub fn move_cursor_x_bounded(&mut self, xdiff: isize, bounds: Range<isize>) -> isize {
         if bounds.is_empty() {
-            return 0
+            return 0;
         }
         self.move_cursor_unbounded(self.restrict_xdiff(xdiff, bounds), 0)
     }
     pub fn move_cursor_y_bounded(&mut self, ydiff: isize, bounds: Range<isize>) -> isize {
         if bounds.is_empty() {
-            return 0
+            return 0;
         }
         self.move_cursor_unbounded(0, self.restrict_ydiff(ydiff, bounds))
     }
     pub fn move_view_x_bounded(&mut self, xdiff: isize, bounds: Range<isize>) -> isize {
         if bounds.is_empty() {
-            return 0
+            return 0;
         }
         let width = self.get_size_x() as isize;
         let old_cursor_x = self.get_x() as isize;
         let new_cursor_x = (old_cursor_x - xdiff).clamp(0, width - 1);
 
-        let actual_xdiff = self.restrict_xdiff(xdiff - old_cursor_x + new_cursor_x, bounds) + old_cursor_x - new_cursor_x;
+        let actual_xdiff = self.restrict_xdiff(xdiff - old_cursor_x + new_cursor_x, bounds)
+            + old_cursor_x
+            - new_cursor_x;
         self.cursor_pos = (new_cursor_x as usize, self.get_y());
 
         actual_xdiff
     }
     pub fn move_view_y_bounded(&mut self, ydiff: isize, bounds: Range<isize>) -> isize {
         if bounds.is_empty() {
-            return 0
+            return 0;
         }
         let width = self.get_size_x() as isize;
         let old_cursor_y = self.get_y() as isize;
-        let new_cursor_y = (old_cursor_y - ydiff).clamp(self.min_row() as isize, self.max_row() as isize);
+        let new_cursor_y =
+            (old_cursor_y - ydiff).clamp(self.min_row() as isize, self.max_row() as isize);
 
-        let actual_ydiff = self.restrict_ydiff(ydiff - old_cursor_y + new_cursor_y, bounds) + old_cursor_y - new_cursor_y;
+        let actual_ydiff = self.restrict_ydiff(ydiff - old_cursor_y + new_cursor_y, bounds)
+            + old_cursor_y
+            - new_cursor_y;
         self.cursor_pos = (self.get_x(), new_cursor_y as usize);
 
         actual_ydiff * width
@@ -440,11 +451,35 @@ pub struct Style {
     pub mode: DisplayMode,
     pub ascii_col: bool,
     pub vertical: bool,
+    pub spacer: bool,
 }
 
 impl Style {
     fn size_per_byte(&self) -> usize {
         self.mode.size_per_byte() + self.ascii_col as usize
+    }
+    pub fn n_column_width(&self, n: usize) -> usize {
+        if n == 0 {
+            return 0;
+        }
+        self.mode.size_per_byte() * n
+            + if self.spacer {
+                (n + SPACER_PERIOD - 1) / SPACER_PERIOD - 1
+            } else {
+                0
+            }
+    }
+    pub fn half_width(&self, n: usize) -> usize {
+        ADDR_SIZE
+            + if self.ascii_col {
+                MIDDLE_PAD.width() + n
+            } else {
+                0
+            }
+            + self.n_column_width(n)
+    }
+    pub fn nth_column_pos(&self, n: usize) -> usize {
+        self.mode.size_per_byte() * n + if self.spacer { n / SPACER_PERIOD } else { 0 }
     }
     fn const_overhead(&self) -> usize {
         let single_overhead = ADDR_SIZE
@@ -463,21 +498,31 @@ impl Style {
     /// Goes in steps of 8 above 24, steps of 4 for 8 - 24 and steps of 1 for < 8
     pub fn get_doublehex_dims(&self, columns: usize, rows: usize) -> (usize, usize) {
         let y = if self.vertical {
-            (rows - 3) / 2
+            rows.saturating_sub(3) / 2
         } else {
-            rows - 2
+            rows.saturating_sub(2)
         };
-        if columns <= self.const_overhead() {
-            return (1, y);
-        }
-        let max_col = (columns - self.const_overhead())
-            / (self.size_per_byte() * if self.vertical { 1 } else { 2 });
-        let x = if max_col < 8 {
-            max_col
-        } else if max_col < 24 {
-            max_col / 4 * 4
+        let x = if columns <= self.const_overhead() {
+            1
         } else {
-            max_col / 8 * 8
+            let available_col = columns - self.const_overhead();
+            let multiplicity = if self.vertical { 1 } else { 2 };
+            let unit_width = self.size_per_byte() * multiplicity;
+            // take out one space from the available columns for each 8 units
+            let without_spacer = if self.spacer {
+                available_col
+                    - available_col / ((self.size_per_byte() * SPACER_PERIOD + 1) * multiplicity) * multiplicity
+            } else {
+                available_col
+            };
+            let max_col = without_spacer / unit_width;
+            if max_col < 8 {
+                max_col
+            } else if max_col < 24 {
+                max_col / 4 * 4
+            } else {
+                max_col / 8 * 8
+            }
         };
         (x, y)
     }
@@ -489,6 +534,7 @@ impl Default for Style {
             mode: DisplayMode::Hex,
             ascii_col: false,
             vertical: false,
+            spacer: false,
         }
     }
 }
@@ -507,18 +553,16 @@ impl DoubleHexContext {
         }
     }
     fn hor_half_width(&self) -> usize {
-        ADDR_SIZE
-            + self.style.size_per_byte() * self.cursor.get_size_x()
-            + if self.style.ascii_col { 2 } else { 1 } * MIDDLE_PAD.width()
+        self.style.half_width(self.cursor.get_size_x())
     }
     fn vert_half_height(&self) -> usize {
         self.cursor.get_size_y() + 1
     }
     fn full_width(&self) -> usize {
         if self.style.vertical {
-            self.style.const_overhead() + self.style.size_per_byte() * self.cursor.get_size_x()
+            self.hor_half_width()
         } else {
-            self.style.const_overhead() + 2 * self.style.size_per_byte() * self.cursor.get_size_x()
+            2 * self.hor_half_width() + MIDDLE_PAD.width()
         }
     }
     fn full_height(&self) -> usize {
@@ -545,7 +589,7 @@ impl DoubleHexContext {
     }
 
     fn first_cursor(&self) -> (usize, usize) {
-        let ret_x = ADDR_SIZE + self.cursor.get_x() * self.style.mode.size_per_byte();
+        let ret_x = ADDR_SIZE + self.style.nth_column_pos(self.cursor.get_x());
         let ret_y = self.cursor.get_y() + 1;
         (ret_x, ret_y)
     }
@@ -557,7 +601,7 @@ impl DoubleHexContext {
         let ret_x = ADDR_SIZE
             + MIDDLE_PAD.width()
             + self.cursor.get_x()
-            + self.cursor.get_size_x() * self.style.mode.size_per_byte();
+            + self.style.n_column_width(self.cursor.get_size_x());
         let ret_y = self.cursor.get_y() + 1;
         Some((ret_x, ret_y))
     }
@@ -567,7 +611,10 @@ impl DoubleHexContext {
         if self.style.vertical {
             (first_x, first_y + self.vert_half_height())
         } else {
-            (first_x + self.hor_half_width(), first_y)
+            (
+                first_x + self.hor_half_width() + MIDDLE_PAD.width(),
+                first_y,
+            )
         }
     }
 
@@ -576,7 +623,10 @@ impl DoubleHexContext {
         if self.style.vertical {
             Some((first_x, first_y + self.vert_half_height()))
         } else {
-            Some((first_x + self.hor_half_width(), first_y))
+            Some((
+                first_x + self.hor_half_width() + MIDDLE_PAD.width(),
+                first_y,
+            ))
         }
     }
 
@@ -683,10 +733,10 @@ impl DoubleHexContext {
         // function for truncating the string on the left when it is too long
         // also inserts an < to indicate that it was truncated
         let shorten = |s: &str| -> String {
-            if s.len() > self.style.size_per_byte() * self.cursor.get_size_x() {
+            if s.len() > self.style.n_column_width(self.cursor.get_size_x()) {
                 s.chars()
                     .rev()
-                    .take(self.style.size_per_byte() * self.cursor.get_size_x() - 2)
+                    .take(self.style.n_column_width(self.cursor.get_size_x()) - 2)
                     .collect::<Vec<_>>()
                     .into_iter()
                     .chain(std::iter::once('<'))
@@ -702,12 +752,7 @@ impl DoubleHexContext {
         let short_second = shorten(second);
 
         let addrsize = ADDR_SIZE - 1;
-        let hexsize = self.cursor.get_size_x() * self.style.size_per_byte() - 1
-            + if self.style.ascii_col {
-                MIDDLE_PAD.width()
-            } else {
-                0
-            };
+        let hexsize = self.hor_half_width() - ADDR_SIZE - 1;
         let first_title = format!(
             "{:addrsize$} {:>hexsize$} ",
             short_title,
