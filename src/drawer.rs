@@ -151,6 +151,12 @@ pub enum DisplayMode {
     Roman = 6,
 }
 
+impl Default for DisplayMode {
+    fn default() -> Self {
+        DisplayMode::Hex
+    }
+}
+
 impl DisplayMode {
     fn size_per_byte(&self) -> usize {
         match self {
@@ -471,6 +477,7 @@ impl Move {
     }
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Style {
     pub mode: DisplayMode,
     pub ascii_col: bool,

@@ -48,6 +48,7 @@ impl Banded {
 
 /// Contains parameters to run the alignment algorithm with
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AlignAlgorithm {
     pub gap_open: i32,
     pub gap_extend: i32,
