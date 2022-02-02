@@ -4,8 +4,9 @@ use crate::backend::{Backend, Color, Effect};
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
 
+const FRONT_PAD: &str = " ";
 const MIDDLE_PAD: &str = " |";
-const ADDR_SIZE: usize = 11;
+const ADDR_SIZE: usize = 10;
 const SPACER_PERIOD: usize = 8;
 
 /// Contains 8 digits of an address, with a space in between and at the front and end
@@ -14,9 +15,9 @@ fn disp_addr(maddr: Option<usize>) -> String {
         Some(addr) => {
             let lo = addr & 0xffff;
             let hi = (addr >> 16) & 0xffff;
-            format!(" {:04x} {:04x} ", hi, lo)
+            format!("{:04x} {:04x} ", hi, lo)
         }
-        None => String::from("           "),
+        None => String::from("          "),
     }
 }
 
@@ -205,17 +206,24 @@ impl DoubleHexLine {
     where
         B: Backend,
     {
+        printer.append_text(FRONT_PAD, Color::Unimportant, Effect::None);
         let address = if first {
             self.address.0
         } else {
             self.address.1
         };
-        let bytes: Vec<_> = self
-            .bytes
-            .iter()
-            .map(|(a, b)| if first { (*a, *b) } else { (*b, *a) })
-            .collect();
-        printer.append_text(&disp_addr(address), Color::Unimportant, Effect::None);
+        let mut bytes = vec![(None, None); self.bytes.len()];
+        for (i, (a, b)) in self.bytes.iter().enumerate() {
+            let target = if style.right_to_left {
+                &mut bytes[self.bytes.len() - 1 - i]
+            } else {
+                &mut bytes[i]
+            };
+            *target = if first { (*a, *b) } else { (*b, *a) }
+        }
+        if !style.right_to_left {
+            printer.append_text(&disp_addr(address), Color::Unimportant, Effect::None);
+        }
         let width = self.bytes.len();
         for (i, (a, b)) in bytes.iter().enumerate() {
             let s = style.mode.disp(*a, false);
@@ -224,6 +232,9 @@ impl DoubleHexLine {
             if style.spacer && i + 1 != width && i % 8 == 7 {
                 printer.append_text(" ", color, Effect::None);
             }
+        }
+        if style.right_to_left {
+            printer.append_text(&disp_addr(address), Color::Unimportant, Effect::None);
         }
         if style.ascii_col {
             printer.append_text(MIDDLE_PAD, Color::Unimportant, Effect::None);
@@ -446,12 +457,26 @@ pub enum Move {
     ViewX(isize),
     ViewY(isize),
 }
+
+impl Move {
+    pub fn reflect_rtl(self) -> Self {
+        match self {
+            // unbounded are used by internal functions,
+            // who do not have a sense of right or left
+            // so we do not have to invert x in this case
+            Move::Unbounded(_, _) | Move::CursorY(_) | Move::ViewY(_) => self,
+            Move::CursorX(x) => Move::CursorX(-x),
+            Move::ViewX(x) => Move::ViewX(-x),
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Style {
     pub mode: DisplayMode,
     pub ascii_col: bool,
     pub vertical: bool,
     pub spacer: bool,
+    pub right_to_left: bool,
 }
 
 impl Style {
@@ -471,6 +496,7 @@ impl Style {
     }
     pub fn half_width(&self, n: usize) -> usize {
         ADDR_SIZE
+            + FRONT_PAD.width()
             + if self.ascii_col {
                 MIDDLE_PAD.width() + n
             } else {
@@ -479,10 +505,14 @@ impl Style {
             + self.n_column_width(n)
     }
     pub fn nth_column_pos(&self, n: usize) -> usize {
-        self.mode.size_per_byte() * n + if self.spacer { n / SPACER_PERIOD } else { 0 }
+        self.mode.size_per_byte() * n
+            + if self.spacer { n / SPACER_PERIOD } else { 0 }
+            + if self.right_to_left { 0 } else { ADDR_SIZE }
+            + FRONT_PAD.width()
     }
     fn const_overhead(&self) -> usize {
         let single_overhead = ADDR_SIZE
+            + FRONT_PAD.width()
             + if self.ascii_col {
                 MIDDLE_PAD.width()
             } else {
@@ -511,7 +541,8 @@ impl Style {
             // take out one space from the available columns for each 8 units
             let without_spacer = if self.spacer {
                 available_col
-                    - available_col / ((self.size_per_byte() * SPACER_PERIOD + 1) * multiplicity) * multiplicity
+                    - available_col / ((self.size_per_byte() * SPACER_PERIOD + 1) * multiplicity)
+                        * multiplicity
             } else {
                 available_col
             };
@@ -535,6 +566,7 @@ impl Default for Style {
             ascii_col: false,
             vertical: false,
             spacer: false,
+            right_to_left: false,
         }
     }
 }
@@ -589,7 +621,12 @@ impl DoubleHexContext {
     }
 
     fn first_cursor(&self) -> (usize, usize) {
-        let ret_x = ADDR_SIZE + self.style.nth_column_pos(self.cursor.get_x());
+        let col = if self.style.right_to_left {
+            self.cursor.get_size_x() - 1 - self.cursor.get_x()
+        } else {
+            self.cursor.get_x()
+        };
+        let ret_x = self.style.nth_column_pos(col);
         let ret_y = self.cursor.get_y() + 1;
         (ret_x, ret_y)
     }
@@ -598,10 +635,16 @@ impl DoubleHexContext {
         if !self.style.ascii_col {
             return None;
         }
-        let ret_x = ADDR_SIZE
+        let col = if self.style.right_to_left {
+            self.cursor.get_size_x() - 1 - self.cursor.get_x()
+        } else {
+            self.cursor.get_x()
+        };
+        let ret_x = FRONT_PAD.width()
+            + ADDR_SIZE
             + MIDDLE_PAD.width()
-            + self.cursor.get_x()
-            + self.style.n_column_width(self.cursor.get_size_x());
+            + self.style.n_column_width(self.cursor.get_size_x())
+            + col;
         let ret_y = self.cursor.get_y() + 1;
         Some((ret_x, ret_y))
     }
@@ -715,10 +758,14 @@ impl DoubleHexContext {
 
         // status bar address
         let addr_print = disp_bottom_addr(cursor_addr);
-        backend.set_pos(
-            self.full_width().saturating_sub(addr_print.chars().count()),
-            self.full_height() - 1,
-        );
+        if self.style.right_to_left {
+            backend.set_pos(0, self.full_height() - 1);
+        } else {
+            backend.set_pos(
+                self.full_width().saturating_sub(addr_print.chars().count()),
+                self.full_height() - 1,
+            );
+        }
         backend.append_text(&addr_print, Color::HexSame, Effect::Inverted);
     }
 
@@ -747,19 +794,32 @@ impl DoubleHexContext {
             }
         };
         // the title is displayed above the addresses
-        let short_title = title.chars().take(ADDR_SIZE - 1).collect::<String>();
+        let addrsize = ADDR_SIZE;
+        let short_title = title.chars().take(addrsize).collect::<String>();
         let short_first = shorten(first);
         let short_second = shorten(second);
 
-        let addrsize = ADDR_SIZE - 1;
-        let hexsize = self.hor_half_width() - ADDR_SIZE - 1;
-        let first_title = format!(
-            "{:addrsize$} {:>hexsize$} ",
-            short_title,
-            short_first,
-            addrsize = addrsize,
-            hexsize = hexsize
-        );
+        let hexsize = self.hor_half_width() - ADDR_SIZE - 2;
+        let format_title = |text| {
+            if self.style.right_to_left {
+                format!(
+                    "{:<hexsize$} {:addrsize$} ",
+                    text,
+                    short_title,
+                    addrsize = addrsize,
+                    hexsize = hexsize
+                )
+            } else {
+                format!(
+                    "{:addrsize$} {:>hexsize$} ",
+                    short_title,
+                    text,
+                    addrsize = addrsize,
+                    hexsize = hexsize
+                )
+            }
+        };
+        let first_title = format_title(short_first);
         printer.set_line(0);
         printer.append_text(&first_title, Color::HexSame, Effect::Inverted);
         if self.style.vertical {
@@ -767,13 +827,7 @@ impl DoubleHexContext {
         } else {
             printer.append_text(MIDDLE_PAD, Color::HexSame, Effect::Inverted);
         }
-        let second_title = format!(
-            "{:addrsize$} {:>hexsize$} ",
-            short_title,
-            short_second,
-            addrsize = addrsize,
-            hexsize = hexsize
-        );
+        let second_title = format_title(short_second);
         printer.append_text(&second_title, Color::HexSame, Effect::Inverted);
     }
 
@@ -786,12 +840,22 @@ impl DoubleHexContext {
         const BOTTOM_TEXT: &str = "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto";
         let print_addr = disp_bottom_addr(addresses);
         let info_width = self.full_width().saturating_sub(print_addr.chars().count());
-        let info_text: String = BOTTOM_TEXT
-            .chars()
-            .chain(std::iter::repeat(' '))
-            .take(info_width)
-            .chain(print_addr.chars())
-            .collect();
+        let bottom_text = BOTTOM_TEXT.chars().take(info_width).collect::<String>();
+        let info_text = if self.style.right_to_left {
+            format!(
+                "{}{:>info_width$}",
+                print_addr,
+                bottom_text,
+                info_width = info_width
+            )
+        } else {
+            format!(
+                "{:<info_width$}{}",
+                bottom_text,
+                print_addr,
+                info_width = info_width
+            )
+        };
         let line = self.full_height() - 1;
         printer.set_line(line);
         printer.append_text(&info_text, Color::HexSame, Effect::Inverted);

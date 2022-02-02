@@ -137,6 +137,11 @@ impl Unaligned {
     pub fn move_around<B: Backend>(&mut self, printer: &mut B, movement: Move) {
         self.set_cursor(printer, CursorActive::None);
         let bounds = self.active_data_bounds();
+        let movement = if self.dh.style.right_to_left {
+            movement.reflect_rtl()
+        } else {
+            movement
+        };
         let relative_bounds = (bounds.start - self.index)..(bounds.end - self.index);
         let diff = self.dh.cursor.mov(movement, relative_bounds);
         // update the compvec in case the views are moved independently
@@ -402,6 +407,11 @@ impl Aligned {
         self.set_cursor(printer, CursorActive::None);
         let relative_bounds =
             (self.data.bounds().start - self.index)..(self.data.bounds().end - self.index);
+        let movement = if self.dh.style.right_to_left {
+            movement.reflect_rtl()
+        } else {
+            movement
+        };
         let index_diff = self.dh.cursor.mov(movement, relative_bounds);
         self.index += index_diff;
         if let Some(scroll_amount) = self.dh.cursor.full_row_move(index_diff) {

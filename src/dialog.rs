@@ -135,6 +135,10 @@ fn apply_style(siv: &mut Cursive) {
         .find_name::<Checkbox>("spacer")
         .expect("Could not find spacer checkbox in settings")
         .is_checked();
+    let right_to_left = siv
+        .find_name::<Checkbox>("right_to_left")
+        .expect("Could not find right_to_left checkbox in settings")
+        .is_checked();
     let mode = number_to_stylemode(
         &siv.find_name::<SelectView<usize>>("display mode")
             .expect("Could not find display mode select view")
@@ -146,6 +150,7 @@ fn apply_style(siv: &mut Cursive) {
         ascii_col,
         vertical,
         spacer,
+        right_to_left,
     };
     siv.user_data::<Settings>()
         .expect("Could not get align algorithm info from cursive")
@@ -400,6 +405,19 @@ pub fn style(siv: &mut Cursive) -> impl View {
                             )
                         })
                         .with_name("spacer"),
+                )
+                .child(
+                    "Right to Left:",
+                    Checkbox::new()
+                        .with_checked(style_settings.right_to_left)
+                        .on_change(|s, check| {
+                            on_hexview(
+                                s,
+                                move |v| v.dh.style.right_to_left = check,
+                                move |v| v.dh.style.right_to_left = check,
+                            )
+                        })
+                        .with_name("right_to_left"),
                 ),
         )
         .child(Button::new("OK", apply_style))
