@@ -18,6 +18,17 @@ one on the right. This option makes it so the split is vertical
 and the primary file is on top and the secondary one on the
 bottom.
 
+Spacer
+------
+Inserts a space every 8 bytes in the main view (not the ascii view).
+
+Right to Left
+-------------
+Instead of increasing the address from left to right, the opposite
+is the case. This can be more natural for little-endian values,
+since this mode shows them in the way that is consistent with
+the order of the nibbles inside of the hex values.
+
 Hex
 ---
 The default, shows byte values always as their values in base 16.
