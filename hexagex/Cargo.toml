@@ -1,0 +1,19 @@
+[package]
+name = "hexagex"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "hexagex"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hexagex"
+path = "src/bin.rs"
+
+[dependencies]
+regex = "1.5.4"
+regex-syntax = "0.6.25"
+hex = "0.4.3"
