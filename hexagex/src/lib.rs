@@ -37,6 +37,11 @@ fn binary_ast_to_final_ast(ast: &Ast) -> Result<Ast, InternalError> {
 
 fn binary_ast_to_maybe_ast(ast: &Ast) -> Result<Either<PartialSequence, Ast>, InternalError> {
     match ast {
+        Ast::Literal(ast::Literal {
+            span,
+            kind: ast::LiteralKind::Special(ast::SpecialLiteralKind::Tab),
+            ..
+        }) => Err(InternalError::IncompleteEscape(span.clone())),
         Ast::Literal(lit) => Ok(Either::Left(PartialElement::try_from(lit)?.sequence())),
         Ast::Dot(span) => Ok(Either::Left(
             PartialElement::full(4, Some(*span)).sequence(),
@@ -86,29 +91,34 @@ impl TryFrom<&ast::Concat> for PartialSequence {
 
     fn try_from(value: &ast::Concat) -> Result<Self, Self::Error> {
         let mut elements = Vec::new();
-        let mut escape_next = false;
+        let mut escape_span = None;
         for ast in value.asts.iter() {
-            if escape_next {
-                escape_next = false;
+            if escape_span.is_some() {
+                escape_span = None;
                 elements.push(Either::Right(ast.clone()));
                 continue;
             }
             match ast {
                 Ast::Concat(v) => elements.append(&mut PartialSequence::try_from(v)?.elements),
                 Ast::Literal(ast::Literal {
+                    span,
                     kind: ast::LiteralKind::Special(ast::SpecialLiteralKind::Tab),
                     ..
-                }) => escape_next = true,
+                }) => escape_span = Some(span),
                 _ => match binary_ast_to_maybe_ast(ast)? {
                     Either::Left(mut l) => elements.append(&mut l.elements),
                     Either::Right(r) => elements.push(Either::Right(r)),
                 },
             }
         }
-        Ok(PartialSequence {
-            span: value.span,
-            elements,
-        })
+        if let Some(span) = escape_span {
+            Err(InternalError::IncompleteEscape(span.clone()))
+        } else {
+            Ok(PartialSequence {
+                span: value.span,
+                elements,
+            })
+        }
     }
 }
 
@@ -706,10 +716,10 @@ fn write_with_span(regex: &str, span: Span) -> String {
 
 impl Error {
     fn new(err: InternalError, regex: &str) -> Self {
+        let mut ret = String::new();
         match err {
             InternalError::RegexError(e) => Error::RegexError(e),
             InternalError::AlignmentError(a) => {
-                let mut ret = String::new();
                 let _ = writeln!(
                     &mut ret,
                     "hexagex error: mismatch in alignment, should be {}, is {}",
@@ -719,7 +729,6 @@ impl Error {
                 Error::HexagexError(ret)
             }
             InternalError::LengthMismatch(l) => {
-                let mut ret = String::new();
                 let _ = writeln!(
                     &mut ret,
                     "hexagex error: length mismatch; this part has a bit length of {}:",
@@ -735,7 +744,6 @@ impl Error {
                 Error::HexagexError(ret)
             }
             InternalError::Unicode(span) => {
-                let mut ret = String::new();
                 let _ = writeln!(
                     &mut ret,
                     "hexagex error: unicode is not supported; offending part:"
@@ -744,10 +752,14 @@ impl Error {
                 Error::HexagexError(ret)
             }
             InternalError::InvalidCharacter(span) => {
-                let mut ret = String::new();
                 let _ = writeln!(&mut ret, "hexagex error: invalid character here:");
                 ret += &write_with_span(regex, span);
                 let _ = write!(&mut ret, "\nNote: use 0-9a-f and . (wildcard) for hexadecimal parts with 4 bits lengths\nI and O and _ (wildcard) for bits and \\x00-\\xff for bytes");
+                Error::HexagexError(ret)
+            }
+            InternalError::IncompleteEscape(span) => {
+                let _ = writeln!(&mut ret, "hexagex error: incomplete escape:");
+                ret += &write_with_span(regex, span);
                 Error::HexagexError(ret)
             }
         }
@@ -761,6 +773,7 @@ enum InternalError {
     LengthMismatch(LengthMismatch),
     Unicode(Span),
     InvalidCharacter(Span),
+    IncompleteEscape(Span),
 }
 
 impl From<regex_syntax::ast::Error> for InternalError {
