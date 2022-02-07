@@ -139,7 +139,7 @@ impl SearchResults {
         to_index: impl Fn(usize, T) -> Option<isize>,
     ) -> Option<isize> {
         let next = list
-            .into_iter()
+            .iter()
             .flat_map(|x| x.0.as_ref().into_iter().map(move |y| (y, x.1, x.2)))
             .flat_map(|(search, addr, right)| {
                 search
@@ -168,7 +168,7 @@ impl SearchResults {
         to_index: impl Fn(usize, T) -> Option<isize>,
     ) -> Option<isize> {
         let next = list
-            .into_iter()
+            .iter()
             .flat_map(|x| x.0.as_ref().into_iter().map(move |y| (y, x.1, x.2)))
             .flat_map(|(search, addr, right)| {
                 search

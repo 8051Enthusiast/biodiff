@@ -119,7 +119,7 @@ fn apply_algorithm(siv: &mut Cursive) {
     }
 }
 
-fn on_hexview<'a, F, G, T>(siv: &'a mut Cursive, aligned: F, unaligned: G) -> T
+fn on_hexview<F, G, T>(siv: &mut Cursive, aligned: F, unaligned: G) -> T
 where
     F: FnOnce(&mut Aligned) -> T,
     G: FnOnce(&mut Unaligned) -> T,
@@ -570,23 +570,7 @@ pub fn search(siv: &mut Cursive) {
         QueryType::Hexagex => 2,
     };
     let query_text = query.as_ref().map_or("", |x| x.text());
-    let dialog = Dialog::around(
-        LinearLayout::horizontal()
-            .child(
-                EditView::new()
-                    .content(query_text)
-                    .with_name(SEARCH_BOX)
-                    .min_width(20),
-            )
-            .child(
-                SelectView::new()
-                    .with_all([("Text", "text"), ("Regex", "regex"), ("Hexagex", "hexagex")])
-                    .selected(query_kind)
-                    .with_name(SEARCH_MODE),
-            ),
-    )
-    .title("Search")
-    .button("Search", |s| {
+    let do_search = |s: &mut Cursive| {
         if let Err(e) = on_search(s) {
             s.add_layer(
                 Dialog::text(e)
@@ -594,7 +578,29 @@ pub fn search(siv: &mut Cursive) {
                     .button("Continue", close_top_maybe_quit),
             )
         }
-    })
+    };
+    let dialog = Dialog::around(
+        LinearLayout::horizontal()
+            .child(PaddedView::lrtb(
+                1,
+                1,
+                2,
+                2,
+                EditView::new()
+                    .content(query_text)
+                    .on_submit(move |s, _| do_search(s))
+                    .with_name(SEARCH_BOX)
+                    .min_width(24),
+            ))
+            .child(Panel::new(
+                SelectView::new()
+                    .with_all([("Text", "text"), ("Regex", "regex"), ("Hexagex", "hexagex")])
+                    .selected(query_kind)
+                    .with_name(SEARCH_MODE),
+            )),
+    )
+    .title("Search")
+    .button("Search", do_search)
     .button("Cancel", close_top_maybe_quit)
     .with_name(SEARCH_DIALOG);
     siv.add_layer(dialog)
