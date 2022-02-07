@@ -764,8 +764,11 @@ impl DoubleHexContext {
                 Effect::Inverted
             } else {
                 match byte {
-                    Some(ByteData{is_search_result: true, ..}) => Effect::Bold,
-                    _ => Effect::None
+                    Some(ByteData {
+                        is_search_result: true,
+                        ..
+                    }) => Effect::Bold,
+                    _ => Effect::None,
                 }
             }
         };
@@ -877,7 +880,8 @@ impl DoubleHexContext {
         printer: &mut B,
         addresses: (Option<usize>, Option<usize>),
     ) {
-        const BOTTOM_TEXT: &str = "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto     F7: Search ";
+        const BOTTOM_TEXT: &str =
+            "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto     F7: Search ";
         let print_addr = disp_bottom_addr(addresses);
         let info_width = self.full_width().saturating_sub(print_addr.chars().count());
         let bottom_text = BOTTOM_TEXT.chars().take(info_width).collect::<String>();

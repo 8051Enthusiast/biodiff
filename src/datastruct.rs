@@ -100,7 +100,7 @@ impl CompVec {
     fn modify_shift(&mut self, relative_shift: isize) -> isize {
         // they obviously cannot overlap if they're both empty, so just do nothing
         if self.yvec.is_empty() && self.xvec.is_empty() {
-            return 0
+            return 0;
         }
         let shift_range = -(self.yvec.len() as isize - 1)..self.xvec.len() as isize;
         let old_shift = self.shift;

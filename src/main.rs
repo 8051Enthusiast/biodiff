@@ -6,8 +6,8 @@ mod dialog;
 mod drawer;
 mod file;
 mod search;
-mod view;
 mod util;
+mod view;
 use std::env;
 use std::process::exit;
 

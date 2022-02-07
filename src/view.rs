@@ -403,9 +403,7 @@ impl Unaligned {
             search.add_match(result.clone())
         }
     }
-    pub fn clear_search(
-        &mut self
-    ) {
+    pub fn clear_search(&mut self) {
         if self.cursor_act.is_first() {
             self.searches.0 = None
         }
@@ -852,9 +850,7 @@ impl Aligned {
             search.add_match(result.clone())
         }
     }
-    pub fn clear_search(
-        &mut self,
-    ) {
+    pub fn clear_search(&mut self) {
         self.searches = (None, None);
     }
     pub fn setup_search(

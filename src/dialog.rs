@@ -611,7 +611,7 @@ fn on_search(siv: &mut Cursive) -> Result<(), String> {
     if content.is_empty() {
         on_hexview(siv, Aligned::clear_search, Unaligned::clear_search);
         close_top_maybe_quit(siv);
-        return Ok(())
+        return Ok(());
     }
     let search_mode = siv
         .call_on_name(SEARCH_MODE, |view: &mut SelectView<&str>| {
