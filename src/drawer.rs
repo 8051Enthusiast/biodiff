@@ -9,6 +9,25 @@ const MIDDLE_PAD: &str = " |";
 const ADDR_SIZE: usize = 10;
 const SPACER_PERIOD: usize = 8;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ByteData {
+    pub byte: u8,
+    pub is_search_result: bool,
+}
+
+impl ByteData {
+    pub fn maybe_new(byte: Option<u8>, is_search_result: bool) -> Option<Self> {
+        Some(ByteData {
+            byte: byte?,
+            is_search_result,
+        })
+    }
+}
+
+fn byte(data: Option<ByteData>) -> Option<u8> {
+    data.map(|x| x.byte)
+}
+
 /// Contains 8 digits of an address, with a space in between and at the front and end
 fn disp_addr(maddr: Option<usize>) -> String {
     match maddr {
@@ -113,26 +132,31 @@ fn disp_roman(h: Option<u8>) -> String {
     format!("{:>9} ", s)
 }
 
+fn byte_effect(x: Option<ByteData>) -> Effect {
+    x.filter(|x| x.is_search_result)
+        .map_or(Effect::None, |_| Effect::Bold)
+}
+
 /// Insertions/Deletions are typically green, mismatches red and same bytes white
-fn color_from_bytes(a: Option<u8>, b: Option<u8>) -> Color {
+fn color_from_bytes(a: Option<ByteData>, b: Option<ByteData>) -> Color {
     match (a, b) {
-        (Some(a), Some(b)) if a == b => Color::HexSame,
+        (Some(a), Some(b)) if a.byte == b.byte => Color::HexSame,
         (Some(_), Some(_)) => Color::HexDiff,
         (None, _) | (_, None) => Color::HexOneside,
     }
 }
 
 /// Insertions/Deletions are typically green, mismatches red and same bytes white
-fn color_secondary_from_bytes(a: Option<u8>, b: Option<u8>) -> Color {
+fn color_secondary_from_bytes(a: Option<ByteData>, b: Option<ByteData>) -> Color {
     match (a, b) {
-        (Some(a), Some(b)) if a == b => Color::HexSameSecondary,
+        (Some(a), Some(b)) if a.byte == b.byte => Color::HexSameSecondary,
         (Some(_), Some(_)) => Color::HexDiffSecondary,
         (None, _) | (_, None) => Color::HexOnesideSecondary,
     }
 }
 /// Insertions/Deletions are typically green, mismatches red and same bytes white
-fn color_from_mixed_bytes(a: Option<u8>, b: Option<u8>) -> Color {
-    if matches!(a, Some(b'!'..=b'~' | b' ' | b'\n' | b'\t' | b'\r')) {
+fn color_from_mixed_bytes(a: Option<ByteData>, b: Option<ByteData>) -> Color {
+    if matches!(byte(a), Some(b'!'..=b'~' | b' ' | b'\n' | b'\t' | b'\r')) {
         color_from_bytes(a, b)
     } else {
         color_secondary_from_bytes(a, b)
@@ -167,7 +191,7 @@ impl DisplayMode {
             Self::Braille => 2,
         }
     }
-    fn color(&self, a: Option<u8>, b: Option<u8>, row: usize) -> Color {
+    fn color(&self, a: Option<ByteData>, b: Option<ByteData>, row: usize) -> Color {
         match self {
             Self::HexAsciiMix => color_from_mixed_bytes(a, b),
             Self::Braille => {
@@ -203,7 +227,7 @@ impl DisplayMode {
 #[derive(Debug, Clone)]
 pub struct DoubleHexLine {
     pub address: (Option<usize>, Option<usize>),
-    pub bytes: Vec<(Option<u8>, Option<u8>)>,
+    pub bytes: Vec<(Option<ByteData>, Option<ByteData>)>,
 }
 
 impl DoubleHexLine {
@@ -232,11 +256,12 @@ impl DoubleHexLine {
         }
         let width = self.bytes.len();
         for (i, (a, b)) in bytes.iter().enumerate() {
-            let s = style.mode.disp(*a, false);
+            let s = style.mode.disp(byte(*a), false);
             let color = style.mode.color(*a, *b, line);
-            printer.append_text(&s, color, Effect::None);
+            let effect = byte_effect(*a);
+            printer.append_text(&s, color, effect);
             if style.spacer && i + 1 != width && i % 8 == 7 {
-                printer.append_text(" ", color, Effect::None);
+                printer.append_text(" ", color, effect);
             }
         }
         if style.right_to_left {
@@ -245,9 +270,10 @@ impl DoubleHexLine {
         if style.ascii_col {
             printer.append_text(MIDDLE_PAD, Color::Unimportant, Effect::None);
             for (a, b) in &bytes {
-                let s = disp_ascii(*a);
+                let s = disp_ascii(byte(*a));
                 let color = style.mode.color(*a, *b, line);
-                printer.append_text(&s, color, Effect::None);
+                let effect = byte_effect(*a);
+                printer.append_text(&s, color, effect);
             }
         }
     }
@@ -330,6 +356,10 @@ impl CursorState {
     /// gets the index of the cursor within the view rectangle
     pub fn get_index(&self) -> usize {
         self.get_y() * self.size.0 + self.get_x()
+    }
+    /// gets the size of the view
+    pub fn get_size(&self) -> usize {
+        self.size.0 * self.size.1
     }
     /// Moves the cursor xdiff columns and ydiff rows
     /// Returns the change of position of the underlying view into
@@ -725,42 +755,45 @@ impl DoubleHexContext {
         &self,
         backend: &mut B,
         active: CursorActive,
-        at_cursor: (Option<u8>, Option<u8>),
+        at_cursor: (Option<ByteData>, Option<ByteData>),
         cursor_addr: (Option<usize>, Option<usize>),
     ) {
         // the cursor is displayed with reverse video
-        let effect = |is_active| {
+        let effect = |is_active, byte: Option<ByteData>| {
             if is_active {
                 Effect::Inverted
             } else {
-                Effect::None
+                match byte {
+                    Some(ByteData{is_search_result: true, ..}) => Effect::Bold,
+                    _ => Effect::None
+                }
             }
         };
 
         // first cursor
         let (first_x, first_y) = self.first_cursor();
-        let first_effect = effect(active.is_first());
+        let first_effect = effect(active.is_first(), at_cursor.0);
         let first_color = self.style.mode.color(at_cursor.0, at_cursor.1, first_y);
-        let first_text = self.style.mode.disp(at_cursor.0, true);
+        let first_text = self.style.mode.disp(byte(at_cursor.0), true);
         // note again that the title bar is skipped
         backend.set_pos(first_x, first_y);
         // we cut of the last byte of the disp_hex so that the space is not reverse video'd
         backend.append_text(&first_text, first_color, first_effect);
         if let Some((fx, fy)) = self.first_cursor_ascii() {
             backend.set_pos(fx, fy);
-            backend.append_text(&disp_ascii(at_cursor.0), first_color, first_effect);
+            backend.append_text(&disp_ascii(byte(at_cursor.0)), first_color, first_effect);
         }
 
         // right cursor
         let (second_x, second_y) = self.second_cursor();
-        let second_effect = effect(active.is_second());
+        let second_effect = effect(active.is_second(), at_cursor.1);
         let second_color = self.style.mode.color(at_cursor.1, at_cursor.0, second_y);
-        let second_text = self.style.mode.disp(at_cursor.1, true);
+        let second_text = self.style.mode.disp(byte(at_cursor.1), true);
         backend.set_pos(second_x, second_y);
         backend.append_text(&second_text, second_color, second_effect);
         if let Some((sx, sy)) = self.second_cursor_ascii() {
             backend.set_pos(sx, sy);
-            backend.append_text(&disp_ascii(at_cursor.1), second_color, second_effect);
+            backend.append_text(&disp_ascii(byte(at_cursor.1)), second_color, second_effect);
         }
 
         // status bar address
@@ -844,7 +877,7 @@ impl DoubleHexContext {
         printer: &mut B,
         addresses: (Option<usize>, Option<usize>),
     ) {
-        const BOTTOM_TEXT: &str = "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto";
+        const BOTTOM_TEXT: &str = "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto     F7: Search ";
         let print_addr = disp_bottom_addr(addresses);
         let info_width = self.full_width().saturating_sub(print_addr.chars().count());
         let bottom_text = BOTTOM_TEXT.chars().take(info_width).collect::<String>();

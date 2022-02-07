@@ -1,5 +1,6 @@
 use crate::{
     align::{AlignAlgorithm, AlignMode, Banded, DEFAULT_BLOCKSIZE, DEFAULT_KMER, DEFAULT_WINDOW},
+    backend::Dummy,
     control::Settings,
     drawer::{DisplayMode, Style},
     file::FileContent,
@@ -118,10 +119,10 @@ fn apply_algorithm(siv: &mut Cursive) {
     }
 }
 
-fn on_hexview<F, G, T>(siv: &mut Cursive, aligned: F, unaligned: G) -> T
+fn on_hexview<'a, F, G, T>(siv: &'a mut Cursive, aligned: F, unaligned: G) -> T
 where
-    F: FnOnce(&mut Aligned) -> T + 'static,
-    G: FnOnce(&mut Unaligned) -> T + 'static,
+    F: FnOnce(&mut Aligned) -> T,
+    G: FnOnce(&mut Unaligned) -> T,
 {
     siv.call_on_name("aligned", aligned)
         .or_else(|| siv.call_on_name("unaligned", unaligned))
@@ -558,12 +559,29 @@ const SEARCH_BOX: &str = "search box";
 const SEARCH_MODE: &str = "search mode";
 
 pub fn search(siv: &mut Cursive) {
+    let query = on_hexview(
+        siv,
+        |v| v.current_search_query().cloned(),
+        |v| v.current_search_query().cloned(),
+    );
+    let query_kind = match query.as_ref().map_or(QueryType::Text, |x| x.query_type()) {
+        QueryType::Text => 0,
+        QueryType::Regex => 1,
+        QueryType::Hexagex => 2,
+    };
+    let query_text = query.as_ref().map_or("", |x| x.text());
     let dialog = Dialog::around(
         LinearLayout::horizontal()
-            .child(EditView::new().with_name(SEARCH_BOX).min_width(20))
+            .child(
+                EditView::new()
+                    .content(query_text)
+                    .with_name(SEARCH_BOX)
+                    .min_width(20),
+            )
             .child(
                 SelectView::new()
                     .with_all([("Text", "text"), ("Regex", "regex"), ("Hexagex", "hexagex")])
+                    .selected(query_kind)
                     .with_name(SEARCH_MODE),
             ),
     )
@@ -590,6 +608,11 @@ fn on_search(siv: &mut Cursive) -> Result<(), String> {
             view.get_content().as_ref().clone()
         })
         .unwrap();
+    if content.is_empty() {
+        on_hexview(siv, Aligned::clear_search, Unaligned::clear_search);
+        close_top_maybe_quit(siv);
+        return Ok(())
+    }
     let search_mode = siv
         .call_on_name(SEARCH_MODE, |view: &mut SelectView<&str>| {
             view.selection()
@@ -604,11 +627,10 @@ fn on_search(siv: &mut Cursive) -> Result<(), String> {
     };
     let query = Query::new(query_type, &content).map_err(|e| e.to_string())?;
     let q1 = query.clone();
-    let q2 = query.clone();
     let ((context1, file1), second) = on_hexview(
         siv,
         move |v| v.setup_search(q1),
-        move |v| v.setup_search(q2),
+        move |v| v.setup_search(query),
     );
     siv.pop_layer();
     search_result_status(siv, 1 + second.is_some() as usize);
@@ -641,7 +663,6 @@ impl SearchResultStats {
     fn update_count(&mut self, diff: usize) {
         self.count += diff;
         self.text.set_content(format!("Results: {}...", self.count));
-        eprintln!("{}", self.count)
     }
 }
 
@@ -700,10 +721,16 @@ fn add_search_results(
         }
         view.usage_count == 0
     }) {
-        Some(true) => close_top_maybe_quit(siv),
+        Some(true) => {
+            on_hexview(
+                siv,
+                |v| v.jump_next_search_result(&mut Dummy),
+                |v| v.jump_next_search_result(&mut Dummy),
+            );
+            close_top_maybe_quit(siv)
+        }
         None => {
             is_running.store(false, std::sync::atomic::Ordering::Relaxed);
-            return;
         }
         Some(false) => (),
     };

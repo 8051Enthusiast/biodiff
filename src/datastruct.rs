@@ -52,6 +52,14 @@ impl<T: Clone> DoubleVec<T> {
     pub fn extend_end(&mut self, other: &[T]) {
         self.end.extend_from_slice(other);
     }
+
+    pub fn first(&self) -> Option<&T> {
+        self.front.last().or_else(|| self.end.first())
+    }
+
+    pub fn last(&self) -> Option<&T> {
+        self.end.last().or_else(|| self.front.first())
+    }
 }
 
 impl<T: Clone> SignedArray for DoubleVec<T> {
@@ -90,6 +98,10 @@ impl CompVec {
     // adds relative_shift to self.shift, ensuring that the arrays
     // still overlap and returns the actual relative shift applied
     fn modify_shift(&mut self, relative_shift: isize) -> isize {
+        // they obviously cannot overlap if they're both empty, so just do nothing
+        if self.yvec.is_empty() && self.xvec.is_empty() {
+            return 0
+        }
         let shift_range = -(self.yvec.len() as isize - 1)..self.xvec.len() as isize;
         let old_shift = self.shift;
         let proposed_shift = old_shift + relative_shift;

@@ -464,7 +464,7 @@ impl std::ops::BitOr for &PartialElement {
     type Output = PartialElement;
 
     fn bitor(self, rhs: Self) -> Self::Output {
-        self.map_pair(rhs, |a, b| a.or_else(|| b))
+        self.map_pair(rhs, |a, b| a.or(b))
     }
 }
 
@@ -472,7 +472,7 @@ impl std::ops::BitAnd for &PartialElement {
     type Output = PartialElement;
 
     fn bitand(self, rhs: Self) -> Self::Output {
-        self.map_pair(rhs, |a, b| a.and_then(|_| b))
+        self.map_pair(rhs, |a, b| a.and(b))
     }
 }
 
@@ -500,7 +500,7 @@ impl std::ops::Sub for &PartialElement {
 impl PartialElement {
     fn from_range(ranges: &[std::ops::RangeInclusive<u8>], span: Span, length: u8) -> Self {
         let mut values = Vec::new();
-        values.extend(ranges.iter().flat_map(|x| x.clone().into_iter()));
+        values.extend(ranges.iter().flat_map(|x| x.clone()));
         Self {
             length,
             span: Some(span),
@@ -587,15 +587,16 @@ impl PartialElement {
             if self_next.is_none() && other_next.is_none() {
                 break;
             }
-            match self_next.cmp(&other_next).reverse() {
+            if let Some(a) = match self_next.cmp(&other_next).reverse() {
                 std::cmp::Ordering::Less => f(self_value.next().map(|x| x.0), None),
                 std::cmp::Ordering::Equal => f(
                     self_value.next().map(|x| x.0),
                     other_value.next().map(|x| x.0),
                 ),
                 std::cmp::Ordering::Greater => f(None, other_value.next().map(|x| x.0)),
+            } {
+                ret.push(a)
             }
-            .and_then(|a| Some(ret.push(a)));
         }
         PartialElement {
             length: self.length,

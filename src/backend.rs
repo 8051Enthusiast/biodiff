@@ -37,6 +37,8 @@ pub enum Action {
     Refresh,
     Goto,
     Search,
+    NextSearch,
+    PrevSearch,
     Top,
     Bottom,
     CursorFirst,
@@ -73,6 +75,8 @@ impl TryFrom<Event> for Action {
                 KeyCode::Char('j') => Action::DownAlt,
                 KeyCode::Char('k') => Action::UpAlt,
                 KeyCode::Char('l') => Action::RightAlt,
+                KeyCode::Char('n') => Action::NextSearch,
+                KeyCode::Char('N') => Action::PrevSearch,
                 KeyCode::Char(' ') => Action::NextDifference,
                 KeyCode::F(1) => Action::Help,
                 KeyCode::Char('1') => Action::Help,
@@ -183,6 +187,7 @@ impl Color {
 #[derive(Clone, Copy, Debug)]
 pub enum Effect {
     Inverted,
+    Bold,
     None,
 }
 
@@ -192,14 +197,16 @@ impl Effect {
             // this assumes that no other effects are in effect
             // so change this when adding others
             // note that Reset also resets colors
-            Effect::None => Attribute::NoReverse,
+            Effect::None => Attribute::Reset,
             Effect::Inverted => Attribute::Reverse,
+            Effect::Bold => Attribute::Bold,
         }
     }
     fn to_cursiv(self) -> theme::Effect {
         match self {
             Effect::None => theme::Effect::Simple,
             Effect::Inverted => theme::Effect::Reverse,
+            Effect::Bold => theme::Effect::Bold,
         }
     }
 }
@@ -296,15 +303,14 @@ impl Backend for Cross {
         if Some(attribute) != self.prev_effect {
             queue!(
                 self.buffer,
+                style::SetAttribute(Attribute::Reset),
                 style::SetAttribute(attribute),
                 style::SetBackgroundColor(CrossColor::Black)
             )
             .unwrap_or_else(quit_with_error("Could not write out text"));
             self.prev_effect = Some(attribute);
-            // if the attribute is Reset, then we also need to set the color again
-            if matches!(attribute, Attribute::Reset) {
-                self.prev_color = None;
-            }
+            // because the attribute is Reset, then we also need to set the color again
+            self.prev_color = None;
         }
         let cross_color = color.to_cross();
         if Some(cross_color) != self.prev_color {
