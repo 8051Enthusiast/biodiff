@@ -4,12 +4,14 @@ mod control;
 mod datastruct;
 mod dialog;
 mod drawer;
-mod utils;
+mod file;
+mod search;
 mod view;
+mod util;
 use std::env;
 use std::process::exit;
 
-use utils::PointedFile;
+use file::FileState;
 
 fn main() {
     let args: Vec<_> = env::args_os().collect();
@@ -22,11 +24,11 @@ fn main() {
             exit(1);
         }
     };
-    let x = PointedFile::from_file(xfile).unwrap_or_else(|e| {
+    let x = FileState::from_file(xfile).unwrap_or_else(|e| {
         eprintln!("Could not read {}: {}", xfile.to_string_lossy(), e);
         exit(1);
     });
-    let y = PointedFile::from_file(yfile).unwrap_or_else(|e| {
+    let y = FileState::from_file(yfile).unwrap_or_else(|e| {
         eprintln!("Could not read {}: {}", yfile.to_string_lossy(), e);
         exit(1);
     });

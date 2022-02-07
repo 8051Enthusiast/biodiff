@@ -17,7 +17,7 @@ members = [
 
 [dependencies]
 bio = "0.39.1"
-crossterm = "0.22.1"
+crossterm = "=0.22.1"
 crossbeam-utils = "0.8.6"
 cursive_buffered_backend = "0.6.0"
 unicode-width = "0.1.9"
@@ -25,8 +25,10 @@ memmap2 = "0.5.2"
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.78"
 dirs = "4.0.0"
+regex = "1.5.4"
+hexagex = { path = "hexagex", version = "0.1.0" }
 
 [dependencies.cursive]
-version = "0.17.0"
+version = "=0.17.0"
 default-features = false
 features = ["crossterm-backend"]

@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::utils::FileContent;
+use crate::file::FileContent;
 
 /// trait for arrays with signed index
 pub trait SignedArray {

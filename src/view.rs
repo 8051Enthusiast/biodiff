@@ -1,4 +1,7 @@
-use std::{ops::Range, sync::mpsc::Sender};
+use std::{
+    ops::Range,
+    sync::{atomic::AtomicBool, mpsc::Sender, Arc},
+};
 
 use cursive::{Vec2, View};
 
@@ -7,13 +10,15 @@ use crate::{
     backend::{Action, Backend, Cursiv},
     datastruct::{CompVec, DoubleVec, SignedArray},
     drawer::{CursorActive, DoubleHexContext, DoubleHexLine, Move},
-    utils::{FileContent, PointedFile},
+    file::{FileContent, FileState},
+    search::{Query, SearchContext, SearchResults},
 };
 
 /// An unaligned view that is just two files next to each other
 pub struct Unaligned {
     data: CompVec,
     filenames: (String, String),
+    searches: (Option<SearchResults>, Option<SearchResults>),
     index: isize,
     pub dh: DoubleHexContext,
     cursor_act: CursorActive,
@@ -21,7 +26,7 @@ pub struct Unaligned {
 
 impl Unaligned {
     /// Creates a new view, with the indexes in the files at the cursor
-    pub fn new(first: PointedFile, second: PointedFile, dh: DoubleHexContext) -> Self {
+    pub fn new(first: FileState, second: FileState, dh: DoubleHexContext) -> Self {
         let mut index = -(dh.cursor.get_index() as isize);
         let mut data = CompVec::new(first.content, second.content);
         index += data.add_first_shift(-(first.index as isize));
@@ -29,6 +34,7 @@ impl Unaligned {
         Unaligned {
             data,
             filenames: (first.name, second.name),
+            searches: (first.search, second.search),
             index,
             dh,
             cursor_act: CursorActive::Both,
@@ -269,8 +275,88 @@ impl Unaligned {
         let index = self.active_data_bounds().end - 1;
         self.goto_index(printer, index)
     }
+    pub fn add_search_results(
+        &mut self,
+        query: Query,
+        results: Vec<Option<Range<usize>>>,
+        first: bool,
+    ) {
+        let search = if first {
+            &mut self.searches.0
+        } else {
+            &mut self.searches.1
+        };
+        let search = match search {
+            Some(s) if s.query() == &query => s,
+            _ => return,
+        };
+        for result in results.iter().flatten() {
+            search.add_match(result.clone())
+        }
+    }
+    pub fn setup_search(
+        &mut self,
+        query: Query,
+    ) -> (
+        (SearchContext, FileContent),
+        Option<(SearchContext, FileContent)>,
+    ) {
+        let is_running = Arc::new(AtomicBool::new(true));
+        match self.cursor_act {
+            CursorActive::None | CursorActive::Both => {
+                self.searches.0 = Some(SearchResults::new(query.clone()));
+                self.searches.1 = Some(SearchResults::new(query.clone()));
+                (
+                    (
+                        SearchContext {
+                            first: true,
+                            query: query.clone(),
+                            is_running: is_running.clone(),
+                        },
+                        self.data.get_data().0,
+                    ),
+                    Some((
+                        SearchContext {
+                            first: false,
+                            query,
+                            is_running,
+                        },
+                        self.data.get_data().1,
+                    )),
+                )
+            }
+            CursorActive::First => {
+                self.searches.0 = Some(SearchResults::new(query.clone()));
+                (
+                    (
+                        SearchContext {
+                            first: true,
+                            query,
+                            is_running,
+                        },
+                        self.data.get_data().0,
+                    ),
+                    None,
+                )
+            }
+            CursorActive::Second => {
+                self.searches.1 = Some(SearchResults::new(query.clone()));
+                (
+                    (
+                        SearchContext {
+                            first: false,
+                            query,
+                            is_running,
+                        },
+                        self.data.get_data().1,
+                    ),
+                    None,
+                )
+            }
+        }
+    }
     /// Turns the view into most of its parts
-    pub fn destruct(self) -> Result<(PointedFile, PointedFile, DoubleHexContext), Self> {
+    pub fn destruct(self) -> Result<(FileState, FileState, DoubleHexContext), Self> {
         let cursor_index = self.cursor_index();
         // for now we only return if the cursor is at a positions where both indexes are actually
         // inside the file
@@ -280,15 +366,17 @@ impl Unaligned {
         ) {
             let (lvec, rvec) = self.data.get_data();
             Ok((
-                PointedFile {
+                FileState {
                     name: self.filenames.0,
                     content: lvec,
                     index: laddr,
+                    search: self.searches.0,
                 },
-                PointedFile {
+                FileState {
                     name: self.filenames.1,
                     content: rvec,
                     index: raddr,
+                    search: self.searches.1,
                 },
                 self.dh,
             ))
@@ -316,6 +404,7 @@ impl From<Action> for AlignedMessage {
 pub struct Aligned {
     data: DoubleVec<AlignElement>,
     filenames: (String, String),
+    searches: (Option<SearchResults>, Option<SearchResults>),
     original: (FileContent, FileContent),
     index: isize,
     pub dh: DoubleHexContext,
@@ -327,8 +416,8 @@ impl Aligned {
     /// Note that receiving events and sending them to the view has to be handled by
     /// the caller for unknown reasons.
     pub fn new(
-        first: PointedFile,
-        second: PointedFile,
+        first: FileState,
+        second: FileState,
         dh: DoubleHexContext,
         algo: &AlignAlgorithm,
         sender: Sender<AlignedMessage>,
@@ -342,6 +431,7 @@ impl Aligned {
             data,
             filenames: (first.name, second.name),
             original: (first.content, second.content),
+            searches: (first.search, second.search),
             index,
             dh,
         }
@@ -522,6 +612,54 @@ impl Aligned {
     pub fn jump_end<B: Backend>(&mut self, printer: &mut B) {
         self.goto_index(printer, self.data.bounds().end - 1)
     }
+    pub fn add_search_results(
+        &mut self,
+        query: Query,
+        results: Vec<Option<Range<usize>>>,
+        first: bool,
+    ) {
+        let search = if first {
+            &mut self.searches.0
+        } else {
+            &mut self.searches.1
+        };
+        let search = match search {
+            Some(s) if s.query() == &query => s,
+            _ => return,
+        };
+        for result in results.iter().flatten() {
+            search.add_match(result.clone())
+        }
+    }
+    pub fn setup_search(
+        &mut self,
+        query: Query,
+    ) -> (
+        (SearchContext, FileContent),
+        Option<(SearchContext, FileContent)>,
+    ) {
+        let is_running = Arc::new(AtomicBool::new(true));
+        self.searches.0 = Some(SearchResults::new(query.clone()));
+        self.searches.1 = Some(SearchResults::new(query.clone()));
+        (
+            (
+                SearchContext {
+                    first: true,
+                    query: query.clone(),
+                    is_running: is_running.clone(),
+                },
+                self.original.0.clone(),
+            ),
+            Some((
+                SearchContext {
+                    first: false,
+                    query,
+                    is_running,
+                },
+                self.original.1.clone(),
+            )),
+        )
+    }
     /// Process move events
     pub fn process_move<B: Backend>(&mut self, printer: &mut B, action: Action) {
         match action {
@@ -569,19 +707,21 @@ impl Aligned {
         }
     }
     /// Turn an Aligned view into its part, including information on where it points
-    pub fn destruct(self) -> Result<(PointedFile, PointedFile, DoubleHexContext), Self> {
+    pub fn destruct(self) -> Result<(FileState, FileState, DoubleHexContext), Self> {
         // we return the original view in case the cursor is outside the files
         match (self.data.get(self.cursor_index())).map(|a| (a.xaddr, a.yaddr)) {
             Some((xaddr, yaddr)) => Ok((
-                PointedFile {
+                FileState {
                     name: self.filenames.0,
                     content: self.original.0,
                     index: xaddr,
+                    search: self.searches.0,
                 },
-                PointedFile {
+                FileState {
                     name: self.filenames.1,
                     content: self.original.1,
                     index: yaddr,
+                    search: self.searches.1,
                 },
                 self.dh,
             )),

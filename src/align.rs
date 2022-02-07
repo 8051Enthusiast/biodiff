@@ -1,6 +1,6 @@
 use std::sync::mpsc::Sender;
 
-use crate::{utils::FileContent, view::AlignedMessage};
+use crate::{file::FileContent, view::AlignedMessage};
 use bio::alignment::{
     pairwise::{self, MatchFunc, Scoring},
     AlignmentOperation as Op,

@@ -2,10 +2,16 @@ use crate::{
     align::{AlignAlgorithm, AlignMode, Banded, DEFAULT_BLOCKSIZE, DEFAULT_KMER, DEFAULT_WINDOW},
     control::Settings,
     drawer::{DisplayMode, Style},
+    file::FileContent,
+    search::{Query, QueryType, SearchContext},
+    util::{self, Finalable},
     view::{Aligned, Unaligned},
 };
-use cursive::{event::Key, theme::PaletteColor, traits::*, views::*, Cursive, View};
-use std::{fmt::Display, str::FromStr};
+use cursive::{
+    event::Key, theme::PaletteColor, traits::*, view::ViewWrapper, views::*, wrap_impl, Cursive,
+    View,
+};
+use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
 const TEXT_WIDTH: usize = 6;
 
 /// A box that changes color when the content is invalid
@@ -514,15 +520,11 @@ pub fn goto(siv: &mut Cursive) {
             .unwrap()
             .map_err(|e| e.to_string())
             .and_then(|pos| {
-                s.call_on_name("aligned", |v: &mut Aligned| {
-                    v.goto(&mut crate::backend::Dummy {}, right, pos)
-                })
-                .or_else(|| {
-                    s.call_on_name("unaligned", |v: &mut Unaligned| {
-                        v.goto(&mut crate::backend::Dummy {}, right, pos)
-                    })
-                })
-                .unwrap()
+                on_hexview(
+                    s,
+                    move |v| v.goto(&mut crate::backend::Dummy, right, pos),
+                    move |v| v.goto(&mut crate::backend::Dummy, right, pos),
+                )
             });
 
         match result {
@@ -542,7 +544,6 @@ pub fn goto(siv: &mut Cursive) {
                         parse_hex(s).is_ok()
                     })),
             )
-            // fun fact: call_goto itself is 4 nested closures, so this makes it 5
             .button("Goto Primary", move |siv| call_goto(siv, false))
             .button("Goto Secondary", move |siv| call_goto(siv, true))
             .button("Cancel", close_top_maybe_quit)
@@ -550,6 +551,162 @@ pub fn goto(siv: &mut Cursive) {
         )
         .on_event(Key::F1, help_window(GOTO_HELP)),
     );
+}
+
+const SEARCH_DIALOG: &str = "search dialog";
+const SEARCH_BOX: &str = "search box";
+const SEARCH_MODE: &str = "search mode";
+
+pub fn search(siv: &mut Cursive) {
+    let dialog = Dialog::around(
+        LinearLayout::horizontal()
+            .child(EditView::new().with_name(SEARCH_BOX).min_width(20))
+            .child(
+                SelectView::new()
+                    .with_all([("Text", "text"), ("Regex", "regex"), ("Hexagex", "hexagex")])
+                    .with_name(SEARCH_MODE),
+            ),
+    )
+    .title("Search")
+    .button("Search", |s| {
+        if let Err(e) = on_search(s) {
+            s.add_layer(
+                Dialog::text(e)
+                    .title("Error in search!")
+                    .button("Continue", close_top_maybe_quit),
+            )
+        }
+    })
+    .button("Cancel", close_top_maybe_quit)
+    .with_name(SEARCH_DIALOG);
+    siv.add_layer(dialog)
+}
+
+const SEARCH_BUFFER_SIZE: usize = 1000000;
+
+fn on_search(siv: &mut Cursive) -> Result<(), String> {
+    let content = siv
+        .call_on_name(SEARCH_BOX, |view: &mut EditView| {
+            view.get_content().as_ref().clone()
+        })
+        .unwrap();
+    let search_mode = siv
+        .call_on_name(SEARCH_MODE, |view: &mut SelectView<&str>| {
+            view.selection()
+                .ok_or_else(|| String::from("No search mode selected!"))
+        })
+        .unwrap()?;
+    let query_type = match *search_mode.as_ref() {
+        "text" => QueryType::Text,
+        "regex" => QueryType::Regex,
+        "hexagex" => QueryType::Hexagex,
+        otherwise => return Err(format!("Invaild search mode: {}", otherwise)),
+    };
+    let query = Query::new(query_type, &content).map_err(|e| e.to_string())?;
+    let q1 = query.clone();
+    let q2 = query.clone();
+    let ((context1, file1), second) = on_hexview(
+        siv,
+        move |v| v.setup_search(q1),
+        move |v| v.setup_search(q2),
+    );
+    siv.pop_layer();
+    search_result_status(siv, 1 + second.is_some() as usize);
+
+    let start_search = |context: SearchContext, content: FileContent| {
+        let sink = siv.cb_sink().clone();
+        let send = util::rate_limit_channel(
+            SEARCH_BUFFER_SIZE,
+            Duration::from_millis(100),
+            search_result_receiver(sink, context.clone()),
+        );
+        context.start_search(send, content)
+    };
+    start_search(context1, file1);
+    if let Some((context2, file2)) = second {
+        start_search(context2, file2)
+    }
+    Ok(())
+}
+
+const SEARCH_STATS: &str = "search stats";
+struct SearchResultStats {
+    view: BoxedView,
+    count: usize,
+    usage_count: usize,
+    text: TextContent,
+}
+
+impl SearchResultStats {
+    fn update_count(&mut self, diff: usize) {
+        self.count += diff;
+        self.text.set_content(format!("Results: {}...", self.count));
+        eprintln!("{}", self.count)
+    }
+}
+
+fn search_result_status(siv: &mut Cursive, usage_count: usize) {
+    let count = 0;
+    let content = TextContent::new("Results: 0...");
+    let view = Dialog::around(TextView::new_with_content(content.clone()))
+        .button("Cancel", close_top_maybe_quit);
+    let search_result_stats = SearchResultStats {
+        view: BoxedView::new(Box::new(view)),
+        count,
+        usage_count,
+        text: content,
+    };
+    siv.add_layer(search_result_stats.with_name(SEARCH_STATS))
+}
+
+impl ViewWrapper for SearchResultStats {
+    wrap_impl!(self.view: BoxedView);
+}
+
+fn search_result_receiver(
+    cb: cursive::CbSink,
+    context: SearchContext,
+) -> impl FnMut(Vec<Option<Range<usize>>>) -> bool + Send + 'static {
+    move |v| {
+        let context = context.clone();
+        cb.send(Box::new(move |siv| add_search_results(siv, v, context)))
+            .is_ok()
+    }
+}
+
+fn add_search_results(
+    siv: &mut Cursive,
+    results: Vec<Option<Range<usize>>>,
+    context: SearchContext,
+) {
+    let count = results.iter().flatten().count();
+    let is_final = results.is_final();
+    let SearchContext {
+        query,
+        first,
+        is_running,
+    } = context;
+    let q1 = query.clone();
+    let r1 = results.clone();
+    on_hexview(
+        siv,
+        move |v| v.add_search_results(q1, results, first),
+        move |v| v.add_search_results(query, r1, first),
+    );
+    match siv.call_on_name(SEARCH_STATS, |view: &mut SearchResultStats| {
+        view.update_count(count);
+        if is_final {
+            view.usage_count -= 1;
+        }
+        view.usage_count == 0
+    }) {
+        Some(true) => close_top_maybe_quit(siv),
+        None => {
+            is_running.store(false, std::sync::atomic::Ordering::Relaxed);
+            return;
+        }
+        Some(false) => (),
+    };
 }
 
 /// We only want to quit cursive and return to our crossterm native implementation

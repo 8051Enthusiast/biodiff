@@ -36,6 +36,7 @@ pub enum Action {
     Algorithm,
     Refresh,
     Goto,
+    Search,
     Top,
     Bottom,
     CursorFirst,
@@ -85,6 +86,8 @@ impl TryFrom<Event> for Action {
                 KeyCode::Char('5') => Action::Refresh,
                 KeyCode::F(6) => Action::Goto,
                 KeyCode::Char('6') => Action::Goto,
+                KeyCode::F(7) => Action::Search,
+                KeyCode::Char('7') => Action::Search,
                 KeyCode::Home => Action::Top,
                 KeyCode::End => Action::Bottom,
                 _ => return Err(()),
@@ -425,7 +428,7 @@ impl<'a, 'b, 'c> Backend for Cursiv<'a, 'b, 'c> {
     }
 }
 
-pub struct Dummy {}
+pub struct Dummy;
 
 impl Backend for Dummy {
     fn set_line(&mut self, _: usize) {}

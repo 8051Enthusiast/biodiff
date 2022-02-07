@@ -15,10 +15,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     align::{AlignAlgorithm, AlignMode},
-    backend::{send_cross_actions, Action, Cross},
+    backend::{send_cross_actions, Action, Cross, Dummy},
     dialog,
     drawer::{CursorState, DoubleHexContext, Style},
-    utils::PointedFile,
+    file::FileState,
     view::{self, Aligned, AlignedMessage},
 };
 use std::{
@@ -33,7 +33,7 @@ type CursiveCallback = Box<dyn Fn(&mut Cursive) + 'static + Send>;
 /// This is the main loop, here we switch between our custom backend and the cursive backend
 /// when opening dialog boxes. This is done because initially, the cursive backend was too flickery.
 /// However, this was fixed by using cursive_buffered_backend, so now this is only a minor optimization.
-pub fn run(x: PointedFile, y: PointedFile) {
+pub fn run(x: FileState, y: FileState) {
     let mut settings = Settings::from_config().unwrap_or_default();
     let mut hv = HexView::new(x, y);
     loop {
@@ -88,7 +88,7 @@ impl Settings {
         if let Err(ref e) = r {
             match e.kind() {
                 std::io::ErrorKind::AlreadyExists => (),
-                _ => r?
+                _ => r?,
             }
         }
         std::fs::write(Self::settings_file()?, config)?;
@@ -113,7 +113,7 @@ pub enum HexView {
 impl HexView {
     /// Creates a new unaligned view from two files with given indexes and cursor
     /// size 16x16.
-    pub fn new(left: PointedFile, right: PointedFile) -> Self {
+    pub fn new(left: FileState, right: FileState) -> Self {
         HexView::Unaligned(view::Unaligned::new(
             left,
             right,
@@ -281,25 +281,15 @@ fn cursiv_align_relay(recv: &mut Receiver<AlignedMessage>, sink: &mut cursive::C
     for ev in recv.iter() {
         match ev {
             AlignedMessage::UserEvent(Action::Quit) => break,
-            AlignedMessage::Append(vec) => {
+            otherwise => {
                 sink.send(Box::new(|siv: &mut Cursive| {
                     siv.call_on_name("aligned", |view: &mut Aligned| {
-                        view.append(vec);
+                        view.process_action(&mut Dummy, otherwise);
                     })
                     .expect("Could not send new data to view");
                 }))
-                .expect("Could not send new data to view");
+                .expect("Could not send event to view");
             }
-            AlignedMessage::Prepend(vec) => {
-                sink.send(Box::new(|siv| {
-                    siv.call_on_name("aligned", |view: &mut Aligned| {
-                        view.prepend(vec);
-                    })
-                    .expect("Could not send new data to view");
-                }))
-                .expect("Could not send new data to view");
-            }
-            _otherwise => (),
         }
     }
 }
@@ -320,6 +310,7 @@ fn delegate_action(action: Action) -> Option<DelegateEvent> {
         Action::Unalign => Some(DelegateEvent::SwitchToUnalign),
         Action::Algorithm => Some(DelegateEvent::OpenDialog(Box::new(dialog::settings))),
         Action::Goto => Some(DelegateEvent::OpenDialog(Box::new(dialog::goto))),
+        Action::Search => Some(DelegateEvent::OpenDialog(Box::new(dialog::search))),
         Action::Help => Some(DelegateEvent::OpenDialog(Box::new(dialog::help_window(
             dialog::MAIN_HELP,
         )))),

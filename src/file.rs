@@ -1,6 +1,8 @@
 use memmap2::{Mmap, MmapOptions};
 use std::{ffi::OsStr, fs::File, io::Read, ops::Deref, sync::Arc};
 
+use crate::search::SearchResults;
+
 pub type FileContent = Arc<MaybeMapped>;
 
 #[derive(Debug)]
@@ -21,14 +23,15 @@ impl Deref for MaybeMapped {
 }
 
 /// The bytes of a file along with its filename and an index pointing at a byte of the file
-#[derive(Clone, Debug)]
-pub struct PointedFile {
+#[derive(Debug)]
+pub struct FileState {
     pub name: String,
     pub content: FileContent,
     pub index: usize,
+    pub search: Option<SearchResults>,
 }
 
-impl PointedFile {
+impl FileState {
     /// Reads a PointedFile from a path, with index 0.
     pub fn from_file(name: &OsStr) -> Result<Self, std::io::Error> {
         let mut file = File::open(name)?;
@@ -39,10 +42,11 @@ impl PointedFile {
                 file.read_to_end(&mut vec).map(|_| MaybeMapped::Vector(vec))
             })?;
         let f = Arc::new(content);
-        Ok(PointedFile {
+        Ok(FileState {
             name: name.to_string_lossy().to_string(),
             content: f,
             index: 0,
+            search: None,
         })
     }
 }
