@@ -6,7 +6,7 @@ use std::ops::Deref;
 pub fn hexagex(hexagex: &str) -> Result<regex_bytes::Regex, Error> {
     || -> Result<regex_bytes::Regex, InternalError> {
         let ast = ast::parse::ParserBuilder::new()
-            .ignore_whitespace(true)
+            .ignore_whitespace(false)
             .build()
             .parse(hexagex)?;
         let real_ast = binary_ast_to_final_ast(&ast)?;
@@ -16,7 +16,7 @@ pub fn hexagex(hexagex: &str) -> Result<regex_bytes::Regex, Error> {
             .print(&real_ast, &mut ret)
             .unwrap();
         let regex = regex_bytes::RegexBuilder::new(&ret)
-            .ignore_whitespace(true)
+            .ignore_whitespace(false)
             .case_insensitive(false)
             .unicode(false)
             .multi_line(true)
@@ -86,9 +86,19 @@ impl TryFrom<&ast::Concat> for PartialSequence {
 
     fn try_from(value: &ast::Concat) -> Result<Self, Self::Error> {
         let mut elements = Vec::new();
+        let mut escape_next = false;
         for ast in value.asts.iter() {
+            if escape_next {
+                escape_next = false;
+                elements.push(Either::Right(ast.clone()));
+                continue;
+            }
             match ast {
                 Ast::Concat(v) => elements.append(&mut PartialSequence::try_from(v)?.elements),
+                Ast::Literal(ast::Literal {
+                    kind: ast::LiteralKind::Special(ast::SpecialLiteralKind::Tab),
+                    ..
+                }) => escape_next = true,
                 _ => match binary_ast_to_maybe_ast(ast)? {
                     Either::Left(mut l) => elements.append(&mut l.elements),
                     Either::Right(r) => elements.push(Either::Right(r)),
@@ -206,6 +216,9 @@ impl TryFrom<&ast::Literal> for PartialElement {
 
     fn try_from(value: &ast::Literal) -> Result<Self, Self::Error> {
         let (val, len) = match value.kind {
+            ast::LiteralKind::Verbatim if [' ', '\t', '\n'].contains(&value.c) => {
+                return Ok(PartialElement::empty(Some(value.span)))
+            }
             ast::LiteralKind::Verbatim
             | ast::LiteralKind::Punctuation
             | ast::LiteralKind::Special(_) => {
@@ -821,11 +834,11 @@ mod tests {
         }
         ranges
     }
-    fn test_matches(regex: &str, hex_content: &str, underline: &str) {
+    fn test_matches(regex: &str, hexcontent: &str, underlined: &str) {
         //println!("{}", hexagex(regex).unwrap().to_string());
-        let content = h(hex_content);
+        let content = h(hexcontent);
         let mut matches = matches(regex, &content).into_iter();
-        for range in get_underline_ranges(underline).into_iter() {
+        for range in get_underline_ranges(underlined).into_iter() {
             let m = matches
                 .next()
                 .expect(&format!("Missing match at {:?}", range));
@@ -919,6 +932,14 @@ mod tests {
             r#"[[:alpha:]\x00] [[:^digit:]\x31] \w \D"#,
             "4a31616300615f3a313161612031ff",
             "^------$^------$      ^------$",
+        )
+    }
+    #[test]
+    fn match_text_escape() {
+        test_matches(
+            r"\t(Hello World)",
+            "48656c6c6f204a6f686e2e2e2e206e6f20776169742c2048656c6c6f20576f726c64210a",
+            "                                              ^--------------------$    ",
         )
     }
 }
