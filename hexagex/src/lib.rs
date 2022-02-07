@@ -37,11 +37,9 @@ fn binary_ast_to_final_ast(ast: &Ast) -> Result<Ast, InternalError> {
 
 fn binary_ast_to_maybe_ast(ast: &Ast) -> Result<Either<PartialSequence, Ast>, InternalError> {
     match ast {
-        Ast::Literal(ast::Literal {
-            span,
-            kind: ast::LiteralKind::Special(ast::SpecialLiteralKind::Tab),
-            ..
-        }) => Err(InternalError::IncompleteEscape(span.clone())),
+        Ast::Literal(lit) if is_text_escape_literal(lit) => {
+            Err(InternalError::IncompleteEscape(lit.span))
+        }
         Ast::Literal(lit) => Ok(Either::Left(PartialElement::try_from(lit)?.sequence())),
         Ast::Dot(span) => Ok(Either::Left(
             PartialElement::full(4, Some(*span)).sequence(),
@@ -100,11 +98,7 @@ impl TryFrom<&ast::Concat> for PartialSequence {
             }
             match ast {
                 Ast::Concat(v) => elements.append(&mut PartialSequence::try_from(v)?.elements),
-                Ast::Literal(ast::Literal {
-                    span,
-                    kind: ast::LiteralKind::Special(ast::SpecialLiteralKind::Tab),
-                    ..
-                }) => escape_span = Some(span),
+                Ast::Literal(lit) if is_text_escape_literal(lit) => escape_span = Some(lit.span),
                 _ => match binary_ast_to_maybe_ast(ast)? {
                     Either::Left(mut l) => elements.append(&mut l.elements),
                     Either::Right(r) => elements.push(Either::Right(r)),
@@ -210,6 +204,9 @@ impl TryFrom<&ast::ClassSetItem> for PartialElement {
     fn try_from(value: &ast::ClassSetItem) -> Result<Self, Self::Error> {
         match value {
             ast::ClassSetItem::Empty(span) => Ok(PartialElement::empty(Some(*span))),
+            ast::ClassSetItem::Literal(lit) if is_text_escape_literal(lit) => {
+                Err(InternalError::InvalidEscapePosition(lit.span))
+            }
             ast::ClassSetItem::Literal(lit) => lit.try_into(),
             ast::ClassSetItem::Range(range) => range.try_into(),
             ast::ClassSetItem::Ascii(ascii) => Ok(ascii.into()),
@@ -219,6 +216,13 @@ impl TryFrom<&ast::ClassSetItem> for PartialElement {
             ast::ClassSetItem::Union(union) => union.try_into(),
         }
     }
+}
+
+fn is_text_escape_literal(lit: &ast::Literal) -> bool {
+    matches!(
+        lit.kind,
+        ast::LiteralKind::Special(ast::SpecialLiteralKind::Tab)
+    )
 }
 
 impl TryFrom<&ast::Literal> for PartialElement {
@@ -271,6 +275,12 @@ impl TryFrom<&ast::ClassSetRange> for PartialElement {
     type Error = InternalError;
 
     fn try_from(value: &ast::ClassSetRange) -> Result<Self, Self::Error> {
+        if let Some(lit) = [&value.start, &value.end]
+            .iter()
+            .find(|x| is_text_escape_literal(x))
+        {
+            return Err(InternalError::InvalidEscapePosition(lit.span));
+        }
         let start = PartialElement::try_from(&value.start)?;
         let end = PartialElement::try_from(&value.end)?;
         if start.length != end.length {
@@ -762,6 +772,15 @@ impl Error {
                 ret += &write_with_span(regex, span);
                 Error::HexagexError(ret)
             }
+            InternalError::InvalidEscapePosition(span) => {
+                let _ = writeln!(
+                    &mut ret,
+                    "hexagex error: escape characters cannot be placed here:"
+                );
+                ret += &write_with_span(regex, span);
+                let _ = write!(&mut ret, "\nNote: if you want to have text characters in braces, place the \\t before it");
+                Error::HexagexError(ret)
+            }
         }
     }
 }
@@ -774,6 +793,7 @@ enum InternalError {
     Unicode(Span),
     InvalidCharacter(Span),
     IncompleteEscape(Span),
+    InvalidEscapePosition(Span),
 }
 
 impl From<regex_syntax::ast::Error> for InternalError {
