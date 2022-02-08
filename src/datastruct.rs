@@ -80,6 +80,7 @@ impl<T: Clone> SignedArray for DoubleVec<T> {
 
 /// A vector consisting of two arrays, the second one being at an
 /// offset of the second one, with at least one byte of overlap
+#[derive(Clone)]
 pub struct CompVec {
     pub xvec: FileContent,
     pub yvec: FileContent,

@@ -1,5 +1,8 @@
 use crate::{
-    align::{AlignAlgorithm, AlignMode, Banded, DEFAULT_BLOCKSIZE, DEFAULT_KMER, DEFAULT_WINDOW},
+    align::{
+        AlignAlgorithm, AlignMode, Banded, FlatAlignProgressMessage, FlatAlignmentContext,
+        DEFAULT_BLOCKSIZE, DEFAULT_KMER, DEFAULT_WINDOW,
+    },
     backend::Dummy,
     control::Settings,
     drawer::{DisplayMode, Style},
@@ -9,10 +12,19 @@ use crate::{
     view::{Aligned, Unaligned},
 };
 use cursive::{
-    event::Key, theme::PaletteColor, traits::*, view::ViewWrapper, views::*, wrap_impl, Cursive,
-    View,
+    event::Key, theme::PaletteColor, traits::*, utils::Counter, view::ViewWrapper, views::*,
+    wrap_impl, CbSink, Cursive, View,
 };
-use std::{fmt::Display, ops::Range, str::FromStr, time::Duration};
+use std::{
+    fmt::Display,
+    ops::Range,
+    str::FromStr,
+    sync::{
+        atomic::{AtomicBool, AtomicUsize},
+        Arc,
+    },
+    time::Duration,
+};
 const TEXT_WIDTH: usize = 6;
 
 /// A box that changes color when the content is invalid
@@ -665,6 +677,10 @@ struct SearchResultStats {
     text: TextContent,
 }
 
+impl ViewWrapper for SearchResultStats {
+    wrap_impl!(self.view: BoxedView);
+}
+
 impl SearchResultStats {
     fn update_count(&mut self, diff: usize) {
         self.count += diff;
@@ -684,10 +700,6 @@ fn search_result_status(siv: &mut Cursive, usage_count: usize) {
         text: content,
     };
     siv.add_layer(search_result_stats.with_name(SEARCH_STATS))
-}
-
-impl ViewWrapper for SearchResultStats {
-    wrap_impl!(self.view: BoxedView);
 }
 
 fn search_result_receiver(
@@ -740,6 +752,101 @@ fn add_search_results(
         }
         Some(false) => (),
     };
+}
+
+const FLAT_ALIGNMENT_PROGRESS: &str = "flat alignment progress";
+pub struct FlatAlignmentProgress {
+    view: BoxedView,
+    is_running: Arc<AtomicBool>,
+    counter: Arc<AtomicUsize>,
+}
+
+impl ViewWrapper for FlatAlignmentProgress {
+    wrap_impl!(self.view: BoxedView);
+}
+
+impl FlatAlignmentProgress {
+    pub fn new(siv: &mut Cursive) {
+        let content = match siv.call_on_name("unaligned", |s: &mut Unaligned| s.data.clone()) {
+            Some(c) => [c.xvec, c.yvec],
+            None => {
+                siv.add_layer(
+                    Dialog::text("Hexview is not unaligned")
+                        .title("Error")
+                        .button("Cancel", close_top_maybe_quit),
+                );
+                return;
+            }
+        };
+        let sink = siv.cb_sink().clone();
+        let is_running = Arc::new(AtomicBool::new(true));
+        let is_running_2_electric_boogaloo = is_running.clone();
+        let update_progress = aligned_callback(sink, is_running.clone());
+        let counter = Counter(Arc::new(AtomicUsize::new(0)));
+        let dialog = Dialog::around(
+            LinearLayout::vertical()
+                .child(TextView::new("Aligning..."))
+                .child(
+                    ProgressBar::new()
+                        .min(0)
+                        .max(256)
+                        .with_value(counter.clone()),
+                ),
+        )
+        .button("Cancel", |s| {
+            s.call_on_name(FLAT_ALIGNMENT_PROGRESS, |fa: &mut FlatAlignmentProgress| {
+                fa.is_running
+                    .store(false, std::sync::atomic::Ordering::Relaxed);
+            });
+            close_top_maybe_quit(s)
+        });
+        siv.add_layer(
+            FlatAlignmentProgress {
+                view: BoxedView::new(Box::new(dialog)),
+                is_running: is_running_2_electric_boogaloo,
+                counter: counter.0,
+            }
+            .with_name(FLAT_ALIGNMENT_PROGRESS),
+        );
+        std::thread::spawn(move || {
+            FlatAlignmentContext::new(is_running, content, update_progress).align_flat()
+        });
+    }
+    fn update_count(&mut self, new_count: u16) {
+        self.counter
+            .store(new_count as usize, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+fn aligned_callback(
+    sink: CbSink,
+    is_running: Arc<AtomicBool>,
+) -> Box<dyn FnMut(FlatAlignProgressMessage) + 'static + Send> {
+    Box::new(move |msg| {
+        let sink = sink.clone();
+        let is_running = is_running.clone();
+        let is_running2 = is_running.clone();
+        let _ = sink
+            .send(Box::new(move |siv: &mut Cursive| match msg {
+                FlatAlignProgressMessage::Incomplete(i) => {
+                    eprintln!("in{}", i);
+                    if siv
+                        .call_on_name(FLAT_ALIGNMENT_PROGRESS, |f: &mut FlatAlignmentProgress| {
+                            f.update_count(i)
+                        })
+                        .is_none()
+                    {
+                        is_running.store(false, std::sync::atomic::Ordering::Relaxed)
+                    }
+                }
+                FlatAlignProgressMessage::Complete(c) => {
+                    eprintln!("com{}", c);
+                    let _ = siv.call_on_name("unaligned", |s: &mut Unaligned| s.set_shift(c));
+                    close_top_maybe_quit(siv);
+                }
+            }))
+            .map_err(|_| is_running2.store(false, std::sync::atomic::Ordering::Relaxed));
+    })
 }
 
 /// We only want to quit cursive and return to our crossterm native implementation

@@ -1,10 +1,15 @@
-use std::sync::mpsc::Sender;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU16, Ordering},
+    mpsc::{Sender, SyncSender},
+    Arc,
+};
 
 use crate::{file::FileContent, view::AlignedMessage};
 use bio::alignment::{
     pairwise::{self, MatchFunc, Scoring},
     AlignmentOperation as Op,
 };
+use realfft::{num_complex::Complex32, RealFftPlanner, RealToComplex};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_BLOCKSIZE: usize = 8192;
@@ -282,6 +287,134 @@ pub fn align_front<F: MatchFunc + Clone>(
         xaddr = first.xaddr;
         yaddr = first.yaddr;
         if sender.send(AlignedMessage::Prepend(real_end)).is_err() {
+            return;
+        }
+    }
+}
+
+
+pub enum FlatAlignProgressMessage {
+    Incomplete(u16),
+    Complete(isize),
+}
+pub struct FlatAlignmentContext {
+    is_running: Arc<AtomicBool>,
+    vecs: [FileContent; 2],
+    update_progress: Box<dyn FnMut(FlatAlignProgressMessage) + Send + 'static>,
+}
+
+impl FlatAlignmentContext {
+    pub fn new(
+        is_running: Arc<AtomicBool>,
+        vecs: [FileContent; 2],
+        update_progress: Box<dyn FnMut(FlatAlignProgressMessage) + Send + 'static>,
+    ) -> Self {
+        Self {
+            is_running,
+            vecs,
+            update_progress,
+        }
+    }
+
+    // this finds the alignment between two arrays *without* removing elements such that
+    // fewest bytes are different (for the compvec)
+    pub fn align_flat(mut self) {
+        let mut progress = 0u16;
+        let thread_num = num_cpus::get().clamp(1, 256);
+        let (send, recv) = std::sync::mpsc::sync_channel::<Vec<Complex32>>(4.max(thread_num));
+        let current_byte = Arc::new(AtomicU16::new(0));
+        let mut fft_planner = RealFftPlanner::new();
+        let total_len = self.vecs.iter().map(|x| x.len()).max().unwrap() * 2;
+        let fft_forward = fft_planner.plan_fft_forward(total_len);
+        let fft_inverse = fft_planner.plan_fft_inverse(total_len);
+        let mut sum = fft_forward.make_output_vec();
+        for _ in 0..thread_num {
+            let vecs = [self.vecs[0].clone(), self.vecs[1].clone()];
+            let inbyte = current_byte.clone();
+            let outvecs = send.clone();
+            let fft = fft_forward.clone();
+            std::thread::spawn(move || correlation_thread(vecs, inbyte, outvecs, fft));
+        }
+        for vec in recv.into_iter().take(256) {
+            if !self.is_running.load(Ordering::Relaxed) {
+                return;
+            }
+            for (a, b) in sum.iter_mut().zip(vec.into_iter()) {
+                *a += b;
+            }
+            progress += 1;
+            (self.update_progress)(FlatAlignProgressMessage::Incomplete(progress));
+        }
+        let mut result = fft_inverse.make_output_vec();
+        fft_inverse
+            .process(&mut sum, &mut result)
+            .expect("Wrong lengths");
+        drop(sum);
+        let offset = result
+            .iter()
+            .enumerate()
+            .max_by(|a, b| {
+                a.1.partial_cmp(b.1).unwrap_or_else(|| {
+                    if a.1.is_nan() {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    }
+                })
+            })
+            .unwrap_or((0, &0.0))
+            .0;
+        drop(result);
+        // oops i messed up somewhere
+        let offset = total_len - offset - 1;
+        let relative_offset = if offset >= total_len / 2 {
+            offset as isize - total_len as isize
+        } else {
+            offset as isize
+        };
+        (self.update_progress)(FlatAlignProgressMessage::Complete(relative_offset))
+    }
+}
+
+fn correlation_thread(
+    vecs: [FileContent; 2],
+    inbyte: Arc<AtomicU16>,
+    outvecs: SyncSender<Vec<Complex32>>,
+    fft: Arc<dyn RealToComplex<f32>>,
+) {
+    let len = fft.len();
+    loop {
+        let byte: u8 = match inbyte.fetch_add(1, Ordering::Relaxed).try_into() {
+            Ok(f) => f,
+            Err(_) => return,
+        };
+
+        let mut first_out = fft.make_output_vec();
+        let mut first = fft.make_input_vec();
+        for (i, x) in vecs[0].iter().enumerate() {
+            if *x == byte {
+                first[len - i - 1] = 1.0;
+            }
+        }
+        fft.process(&mut first, &mut first_out)
+            .expect("Wrong fft vector lengths");
+        drop(first);
+        let mut second = fft.make_input_vec();
+        for (i, x) in vecs[1].iter().enumerate() {
+            if *x == byte {
+                second[i] = 1.0
+            }
+        }
+        let mut second_out = fft.make_output_vec();
+        fft.process(&mut second, &mut second_out)
+            .expect("Wrong fft vector lengths");
+        for (a, b) in first_out.iter_mut().zip(second_out.iter()) {
+            *a *= b;
+        }
+        drop((second, second_out));
+        // note: we do not correlate fully, since we can add all the samples together
+        // in the frequency domain, saving nearly 1/3 of the processing time
+        if let Err(_) = outvecs.send(first_out) {
             return;
         }
     }

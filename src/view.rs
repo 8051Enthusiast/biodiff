@@ -17,7 +17,7 @@ use crate::{
 
 /// An unaligned view that is just two files next to each other
 pub struct Unaligned {
-    data: CompVec,
+    pub data: CompVec,
     filenames: (String, String),
     searches: (Option<SearchResults>, Option<SearchResults>),
     index: isize,
@@ -161,6 +161,9 @@ impl Unaligned {
             content.push(DoubleHexLine { address, bytes });
         }
         content
+    }
+    pub fn set_shift(&mut self, shift: isize) {
+        self.data.shift = shift;
     }
     /// Prints the top and bottom bar
     fn print_bars<B: Backend>(&self, printer: &mut B) {

@@ -311,6 +311,7 @@ fn delegate_action(action: Action) -> Option<DelegateEvent> {
         Action::Algorithm => Some(DelegateEvent::OpenDialog(Box::new(dialog::settings))),
         Action::Goto => Some(DelegateEvent::OpenDialog(Box::new(dialog::goto))),
         Action::Search => Some(DelegateEvent::OpenDialog(Box::new(dialog::search))),
+        Action::SetOffset => Some(DelegateEvent::OpenDialog(Box::new(dialog::FlatAlignmentProgress::new))),
         Action::Help => Some(DelegateEvent::OpenDialog(Box::new(dialog::help_window(
             dialog::MAIN_HELP,
         )))),
