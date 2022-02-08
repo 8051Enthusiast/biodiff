@@ -591,30 +591,34 @@ pub fn search(siv: &mut Cursive) {
             )
         }
     };
-    let dialog = Dialog::around(
-        LinearLayout::horizontal()
-            .child(PaddedView::lrtb(
-                1,
-                1,
-                2,
-                2,
-                EditView::new()
-                    .content(query_text)
-                    .on_submit(move |s, _| do_search(s))
-                    .with_name(SEARCH_BOX)
-                    .min_width(24),
-            ))
-            .child(Panel::new(
-                SelectView::new()
-                    .with_all([("Text", "text"), ("Regex", "regex"), ("Hexagex", "hexagex")])
-                    .selected(query_kind)
-                    .with_name(SEARCH_MODE),
-            )),
+    let dialog = OnEventView::new(
+        Dialog::around(
+            LinearLayout::horizontal()
+                .child(PaddedView::lrtb(
+                    1,
+                    1,
+                    2,
+                    2,
+                    EditView::new()
+                        .content(query_text)
+                        .on_submit(move |s, _| do_search(s))
+                        .with_name(SEARCH_BOX)
+                        .min_width(24),
+                ))
+                .child(Panel::new(
+                    SelectView::new()
+                        .with_all([("Text", "text"), ("Regex", "regex"), ("Hexagex", "hexagex")])
+                        .selected(query_kind)
+                        .with_name(SEARCH_MODE),
+                )),
+        )
+        .title("Search")
+        .button("Search", do_search)
+        .button("Cancel", close_top_maybe_quit)
+        .button("Help", help_window(SEARCH_HELP))
+        .with_name(SEARCH_DIALOG),
     )
-    .title("Search")
-    .button("Search", do_search)
-    .button("Cancel", close_top_maybe_quit)
-    .with_name(SEARCH_DIALOG);
+    .on_event(Key::F1, help_window(SEARCH_HELP));
     siv.add_layer(dialog)
 }
 
@@ -754,6 +758,43 @@ fn add_search_results(
     };
 }
 
+pub fn set_offset(siv: &mut Cursive) {
+    if on_hexview(siv, |_| true, |_| false) {
+        return;
+    };
+    let execute_align = |s: &mut Cursive, which: &i32| match *which {
+        0 => {
+            on_hexview(s, |_| (), |v| v.align_start(&mut Dummy));
+            close_top_maybe_quit(s);
+        }
+        1 => {
+            on_hexview(s, |_| (), |v| v.align_end(&mut Dummy));
+            close_top_maybe_quit(s);
+        }
+        2 => {
+            s.pop_layer();
+            FlatAlignmentProgress::make_new(s);
+        }
+        _ => (),
+    };
+    let dialog = OnEventView::new(
+        Dialog::around(
+            SelectView::new()
+                .with_all([
+                    ("Align offset at start", 0),
+                    ("Align offset at end", 1),
+                    ("Align offset at biggest overlap", 2),
+                ])
+                .on_submit(execute_align),
+        )
+        .title("Set offset")
+        .button("Cancel", close_top_maybe_quit)
+        .button("Help", help_window(SET_OFFSET_HELP)),
+    )
+    .on_event(Key::F1, help_window(SET_OFFSET_HELP));
+    siv.add_layer(dialog);
+}
+
 const FLAT_ALIGNMENT_PROGRESS: &str = "flat alignment progress";
 pub struct FlatAlignmentProgress {
     view: BoxedView,
@@ -766,7 +807,7 @@ impl ViewWrapper for FlatAlignmentProgress {
 }
 
 impl FlatAlignmentProgress {
-    pub fn new(siv: &mut Cursive) {
+    pub fn make_new(siv: &mut Cursive) {
         let content = match siv.call_on_name("unaligned", |s: &mut Unaligned| s.data.clone()) {
             Some(c) => [c.xvec, c.yvec],
             None => {
@@ -790,7 +831,8 @@ impl FlatAlignmentProgress {
                     ProgressBar::new()
                         .min(0)
                         .max(256)
-                        .with_value(counter.clone()),
+                        .with_value(counter.clone())
+                        .min_width(16),
                 ),
         )
         .button("Cancel", |s| {
@@ -829,19 +871,18 @@ fn aligned_callback(
         let _ = sink
             .send(Box::new(move |siv: &mut Cursive| match msg {
                 FlatAlignProgressMessage::Incomplete(i) => {
-                    eprintln!("in{}", i);
-                    if siv
+                    let send = siv
                         .call_on_name(FLAT_ALIGNMENT_PROGRESS, |f: &mut FlatAlignmentProgress| {
                             f.update_count(i)
-                        })
-                        .is_none()
-                    {
+                        });
+                    if send.is_none() {
                         is_running.store(false, std::sync::atomic::Ordering::Relaxed)
                     }
                 }
                 FlatAlignProgressMessage::Complete(c) => {
-                    eprintln!("com{}", c);
-                    let _ = siv.call_on_name("unaligned", |s: &mut Unaligned| s.set_shift(c));
+                    let _ = siv.call_on_name("unaligned", |s: &mut Unaligned| {
+                        s.align_custom(&mut Dummy, c);
+                    });
                     close_top_maybe_quit(siv);
                 }
             }))
@@ -873,3 +914,5 @@ pub const MAIN_HELP: &str = include_str!("help/main.txt");
 pub const ALGORITHM_HELP: &str = include_str!("help/algorithm.txt");
 pub const STYLE_HELP: &str = include_str!("help/style.txt");
 pub const GOTO_HELP: &str = include_str!("help/goto.txt");
+pub const SEARCH_HELP: &str = include_str!("help/search.txt");
+pub const SET_OFFSET_HELP: &str = include_str!("help/set_offset.txt");

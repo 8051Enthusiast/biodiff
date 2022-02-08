@@ -203,6 +203,26 @@ impl Unaligned {
         self.goto_index(printer, new_index);
         self.cursor_act = old_active;
     }
+    pub fn goto_index_both<B: Backend>(&mut self, printer: &mut B, index: isize) {
+        let old_active = self.cursor_act;
+        self.cursor_act = CursorActive::Both;
+        self.goto_index(printer, index);
+        self.cursor_act = old_active;
+    }
+    pub fn align_custom<B: Backend>(&mut self, printer: &mut B, shift: isize) {
+        self.set_shift(shift);
+        let hi_idx = self.data.highest_common_entropy();
+        self.goto_index_both(printer, hi_idx);
+    }
+    pub fn align_start<B: Backend>(&mut self, printer: &mut B) {
+        self.set_shift(0);
+        self.goto_index_both(printer, 0);
+    }
+    pub fn align_end<B: Backend>(&mut self, printer: &mut B) {
+        let diff = self.data.xvec.len() as isize - self.data.yvec.len() as isize;
+        self.set_shift(diff);
+        self.goto_index_both(printer, self.data.xvec.len() as isize - 1);
+    }
     /// moves the cursor xdiff down and ydiff to the right,
     /// redrawing/scrolling if necessary
     pub fn move_around<B: Backend>(&mut self, printer: &mut B, movement: Move) {

@@ -106,7 +106,7 @@ impl TryFrom<&ast::Concat> for PartialSequence {
             }
         }
         if let Some(span) = escape_span {
-            Err(InternalError::IncompleteEscape(span.clone()))
+            Err(InternalError::IncompleteEscape(span))
         } else {
             Ok(PartialSequence {
                 span: value.span,

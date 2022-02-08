@@ -1,0 +1,18 @@
+Set offset
+==========
+
+There are three options:
+ * Align offset at start:
+    Set the relative offset between the two files in the unaligned view
+    so that they meet at their first byte and then jump to the start.
+ 
+ * Align offset at end:
+    Set the relative offset between the two files in the unaligned view
+    so that they meet at their last byte and then jump to the end.
+ 
+ * Align offset at biggest overlap:
+    Set the relative offset between the two files in the unaligned view
+    so that the amount of same bytes is maximal and then jump to a
+    common subsequence where the product of entropy and length is the
+    highest. This can be a bit faster than global alignment and is useful
+    for initial exploration, but does not account for deleted/inserted bytes.

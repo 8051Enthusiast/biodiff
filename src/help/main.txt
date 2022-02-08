@@ -8,12 +8,16 @@ Keys:
  * 'h', 'j', 'k', 'l', Page Up/Down: Move view without moving cursor
  * 'a', 's', 'd' (Unaligned View): Choose active cursor
                         primary/both/secondary view
+ * 'o' (Unaligned View): set offset between unaligned files
  * space: Jump to the next difference (but at least half a page)
  * F1: View Help
  * F2: View Unaligned
  * F3: View Aligned
  * F4: Alignment Algorithm Settings
  * F6: Go to address
+ * F7: Search
+ * 'n': Jump to next search result
+ * 'N': Jump to previous search result
  * Home: Jump to first address
  * End: Jump to last address
 

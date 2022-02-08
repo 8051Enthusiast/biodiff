@@ -1,0 +1,28 @@
+Search
+======
+
+There is a search box and an option how the search box is
+interpreted.
+
+The options mean following:
+ * Text:
+    the search query is interpreted as raw text (without
+    any escapes) and searched.
+ 
+ * Regex:
+    the search query is interpreted as a regex. For more
+    infos see https://docs.rs/regex/latest/regex/. Most
+    normal regex is supported, backreferences are not.
+
+ * Hexagex:
+    Basically a regex, but basically written as if you are
+    searching through hex. You can also use this to search
+    normal hex, since there is nothing that could be
+    accidentally escaped. For example, "([2-7].){5,}00"
+    searches for zero-terminated ascii strings with five
+    or more characters. You can also use text escapes through '\t'
+    like "\t(Hello World)00" or search for bits by using I and O.
+    The search query must always result in a multiple of 8 bits
+    as a result.
+
+You can use 'n' and 'N' to go forward/backward through the results.

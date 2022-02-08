@@ -365,7 +365,6 @@ impl FlatAlignmentContext {
             .unwrap_or((0, &0.0))
             .0;
         drop(result);
-        // oops i messed up somewhere
         let offset = total_len - offset - 1;
         let relative_offset = if offset >= total_len / 2 {
             offset as isize - total_len as isize
@@ -414,7 +413,7 @@ fn correlation_thread(
         drop((second, second_out));
         // note: we do not correlate fully, since we can add all the samples together
         // in the frequency domain, saving nearly 1/3 of the processing time
-        if let Err(_) = outvecs.send(first_out) {
+        if outvecs.send(first_out).is_err() {
             return;
         }
     }

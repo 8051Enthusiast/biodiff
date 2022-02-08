@@ -94,3 +94,29 @@ pub fn rate_limit_channel<T: Finalable + Send + 'static>(
     std::thread::spawn(timer);
     move |t| input_channel_send.send(Some(t)).is_ok()
 }
+
+pub fn entropy(data: &[u8]) -> f32 {
+    let mut counts = vec![0usize; 256];
+    for byte in data {
+        counts[usize::from(*byte)] += 1;
+    }
+    counts.into_iter().map(|x| {
+        if x == 0 {
+            return 0.0f32
+        };
+        let freq = x as f32 / data.len() as f32;
+        -freq * freq.log2() / 8.0
+    }).sum::<f32>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::entropy;
+    #[test]
+    fn ent() {
+        let all = (0..=255u8).into_iter().collect::<Vec<u8>>();
+        assert!((entropy(&all) - 1.0).abs() < 0.001);
+        let none = vec![0u8; 256];
+        assert!(entropy(&none).abs() < 0.001);
+    }
+}

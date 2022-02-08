@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::file::FileContent;
+use crate::{file::FileContent, util::entropy};
 
 /// trait for arrays with signed index
 pub trait SignedArray {
@@ -146,6 +146,72 @@ impl CompVec {
     pub fn second_bound(&self) -> Range<isize> {
         self.shift..self.shift as isize + self.yvec.len() as isize
     }
+    pub fn highest_common_entropy(&self) -> isize {
+        if self.xvec.is_empty() || self.yvec.is_empty() {
+            return 0;
+        }
+        let first_start_index = 0.max(self.shift) as usize;
+        let second_start_index = 0.max(-self.shift) as usize;
+        let max = CommonSequenceIterator::new(
+            &self.xvec[first_start_index..],
+            &self.yvec[second_start_index..],
+        )
+        .map(|(data, range)| {
+            let entr = entropy(data);
+            (entr * range.len() as f32, range.start)
+        })
+        .max_by(|a, b| {
+            a.0.partial_cmp(&b.0).unwrap_or_else(|| {
+                if a.0.is_nan() {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                }
+            })
+        });
+        let (_, addr) = match max {
+            Some(x) => x,
+            None => return 0,
+        };
+        (first_start_index + addr) as isize
+    }
+}
+
+pub struct CommonSequenceIterator<'a> {
+    idx: usize,
+    a: &'a [u8],
+    b: &'a [u8],
+}
+
+impl<'a> CommonSequenceIterator<'a> {
+    pub fn new(a: &'a [u8], b: &'a [u8]) -> Self {
+        Self { idx: 0, a, b }
+    }
+}
+
+impl<'a> Iterator for CommonSequenceIterator<'a> {
+    type Item = (&'a [u8], Range<usize>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next_common_index = self
+            .a
+            .iter()
+            .zip(self.b.iter())
+            .enumerate()
+            .find_map(|(i, (a, b))| (a == b).then(|| i))?;
+        let next_uncommon_index = self.a[next_common_index..]
+            .iter()
+            .zip(self.b[next_common_index..].iter())
+            .enumerate()
+            .find_map(|(i, (a, b))| (a != b).then(|| i + next_common_index))
+            .unwrap_or_else(|| self.a.len().min(self.b.len()));
+        let ret = &self.a[next_common_index..next_uncommon_index];
+        self.a = &self.a[next_uncommon_index..];
+        self.b = &self.b[next_uncommon_index..];
+        let range = self.idx + next_common_index..self.idx + next_uncommon_index;
+        self.idx += next_uncommon_index;
+        Some((ret, range))
+    }
 }
 
 impl SignedArray for CompVec {
@@ -239,5 +305,22 @@ mod tests {
         v.extend_front(&[1, 3, 5]);
         assert_eq!(v.binary_search(&Some(6), Option::<i32>::cmp), Err(0));
         assert_eq!(v.binary_search(&Some(0), Option::<i32>::cmp), Err(-3));
+    }
+    #[test]
+    fn common_sequence_iter() {
+        let common_sequences = CommonSequenceIterator::new(
+            &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 12, 13, 14, 15, 16],
+            &[0, 1, 0, 3, 4, 5, 0, 7, 8, 9, 0, 11, 12, 13, 14, 15, 16, 17],
+        )
+        .collect::<Vec<_>>();
+        assert_eq!(
+            common_sequences,
+            vec![
+                (&[0, 1][..], 0..2),
+                (&[3, 4, 5][..], 3..6),
+                (&[7, 8, 9][..], 7..10),
+                (&[12, 13, 14, 15, 16][..], 12..17)
+            ]
+        )
     }
 }
