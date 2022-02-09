@@ -1,3 +1,12 @@
+1.0.0 (2022-02-09)
+==================
+* Skip blocks for alignment when they are the same
+* Improve cursor ergonomics
+* Add hex spacers
+* Add right-to-left mode
+* Add search function
+* Add set offset for unaligned view
+
 0.2.1 (2021-06-27)
 ==================
 * Add `git-biodiff` binary; this makes it possible to invoke biodiff when using git by using it as `git biodiff` the same way you would invoke `git diff`
