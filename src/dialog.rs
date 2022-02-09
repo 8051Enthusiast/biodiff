@@ -789,6 +789,13 @@ fn add_search_results(
 /// in various ways
 pub fn set_offset(siv: &mut Cursive) {
     if on_hexview(siv, |_| true, |_| false) {
+        // TODO: figure out why this dialog box is needed and i cannot just call
+        // close_top_maybe_quit directly
+        siv.add_layer(
+            Dialog::text("Set offset can only be done on an unaligned view!")
+                .title("Specifity Error")
+                .button("Continue", close_top_maybe_quit),
+        );
         return;
     };
     let execute_align = |s: &mut Cursive, which: &i32| match *which {
@@ -932,6 +939,10 @@ fn aligned_callback(
 /// We only want to quit cursive and return to our crossterm native implementation
 /// when no other windows are open. This function wraps that behaviour.
 pub fn close_top_maybe_quit(siv: &mut Cursive) {
+    if siv.screen().len() <= 1 {
+        siv.quit();
+        return;
+    }
     siv.pop_layer();
     if siv.screen().len() <= 1 {
         siv.quit()
