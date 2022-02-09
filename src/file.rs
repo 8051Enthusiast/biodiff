@@ -6,6 +6,9 @@ use crate::search::SearchResults;
 pub type FileContent = Arc<MaybeMapped>;
 
 #[derive(Debug)]
+/// file that is either mmap'd or loaded into memory.
+/// It implements an deref onto [u8] so that it can be
+/// read as a slice.
 pub enum MaybeMapped {
     Mapped(Mmap),
     Vector(Vec<u8>),

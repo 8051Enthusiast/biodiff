@@ -140,12 +140,16 @@ impl CompVec {
     pub fn get_data(&self) -> (FileContent, FileContent) {
         (self.xvec.clone(), self.yvec.clone())
     }
+    /// Returns the possible indexes where the first vector has data
     pub fn first_bound(&self) -> Range<isize> {
         0..self.xvec.len() as isize
     }
+    /// Returns the possible indexes where the second vector has data
     pub fn second_bound(&self) -> Range<isize> {
         self.shift..self.shift as isize + self.yvec.len() as isize
     }
+    /// Calculates the index of a subsequence (with the current offset)
+    /// where the product of entropy and length is the highest
     pub fn highest_common_entropy(&self) -> isize {
         if self.xvec.is_empty() || self.yvec.is_empty() {
             return 0;
@@ -161,6 +165,7 @@ impl CompVec {
             (entr * range.len() as f32, range.start)
         })
         .max_by(|a, b| {
+            // we prefer the one that is not nan for the maximum
             a.0.partial_cmp(&b.0).unwrap_or_else(|| {
                 if a.0.is_nan() {
                     std::cmp::Ordering::Less
@@ -177,6 +182,7 @@ impl CompVec {
     }
 }
 
+/// Iterates over common sequences of the two given vectors
 pub struct CommonSequenceIterator<'a> {
     idx: usize,
     a: &'a [u8],
@@ -184,6 +190,7 @@ pub struct CommonSequenceIterator<'a> {
 }
 
 impl<'a> CommonSequenceIterator<'a> {
+    /// Returns the CommonSequenceIterator over the given vectors
     pub fn new(a: &'a [u8], b: &'a [u8]) -> Self {
         Self { idx: 0, a, b }
     }

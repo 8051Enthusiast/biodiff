@@ -83,12 +83,14 @@ impl Unaligned {
         self.dh
             .set_doublehex_cursor(printer, cursor_act, (a, b), addr);
     }
+    /// changes the active cursor to be cursor_act and moves back into bounds if the active cursor is outside bounds
     fn change_active_cursor<B: Backend>(&mut self, printer: &mut B, cursor_act: CursorActive) {
         self.cursor_act = cursor_act;
         self.move_back_into_bounds(printer);
         self.set_cursor(printer, cursor_act);
         printer.refresh()
     }
+    /// returns the search results visible in the current view
     fn search_ranges(&self) -> [Vec<(isize, isize)>; 2] {
         let intersect_range =
             |a: Range<isize>, b: Range<isize>| a.start.max(b.start)..a.end.min(b.end);
@@ -176,7 +178,7 @@ impl Unaligned {
         );
         self.dh.print_bottom_line(printer, addr);
     }
-
+    /// returns the bound of the index of the currently active cursor(s)
     fn active_data_bounds(&self) -> Range<isize> {
         match self.cursor_act {
             CursorActive::Both | CursorActive::None => self.data.bounds(),
@@ -184,9 +186,12 @@ impl Unaligned {
             CursorActive::Second => self.data.second_bound(),
         }
     }
+    /// returns the current index of the cursor into the data
     fn cursor_index(&self) -> isize {
         self.index + self.dh.cursor.get_index() as isize
     }
+    /// when the currently active cursor is outside of bounds, move it back
+    /// into bounds
     pub fn move_back_into_bounds<B: Backend>(&mut self, printer: &mut B) {
         let old_active = self.cursor_act;
         let bounds = self.active_data_bounds();
@@ -203,21 +208,26 @@ impl Unaligned {
         self.goto_index(printer, new_index);
         self.cursor_act = old_active;
     }
+    /// go to an index on both sides, regardless of currently active cursor
     pub fn goto_index_both<B: Backend>(&mut self, printer: &mut B, index: isize) {
         let old_active = self.cursor_act;
         self.cursor_act = CursorActive::Both;
         self.goto_index(printer, index);
         self.cursor_act = old_active;
     }
+    /// set the current shift in the data to `shift` and jump to the common
+    /// sequence of highest entropy length
     pub fn align_custom<B: Backend>(&mut self, printer: &mut B, shift: isize) {
         self.set_shift(shift);
         let hi_idx = self.data.highest_common_entropy();
         self.goto_index_both(printer, hi_idx);
     }
+    /// align the starts of the data and jump to them
     pub fn align_start<B: Backend>(&mut self, printer: &mut B) {
         self.set_shift(0);
         self.goto_index_both(printer, 0);
     }
+    /// align the ends of the data and jump to them
     pub fn align_end<B: Backend>(&mut self, printer: &mut B) {
         let diff = self.data.xvec.len() as isize - self.data.yvec.len() as isize;
         self.set_shift(diff);
@@ -297,6 +307,7 @@ impl Unaligned {
             otherwise => self.process_move(printer, otherwise),
         }
     }
+    /// jump to a given index with the currently active cursor
     pub fn goto_index<B: Backend>(&mut self, printer: &mut B, index: isize) {
         let address_diff = index - self.cursor_index();
         let (col, row) = self.dh.cursor.jump(address_diff);
@@ -336,6 +347,7 @@ impl Unaligned {
         );
         Ok(())
     }
+    /// get the search results and positions of all active cursors
     fn search_data(&self) -> Vec<(&Option<SearchResults>, usize, bool)> {
         self.data
             .get_first_addr(self.cursor_index())
@@ -352,6 +364,7 @@ impl Unaligned {
             .copied()
             .collect()
     }
+    /// get the file address of the current index, with the side given by `right`
     fn index_address(&self, right: bool, addr: usize) -> isize {
         if right {
             self.data.shift + addr as isize
@@ -359,6 +372,7 @@ impl Unaligned {
             addr as isize
         }
     }
+    /// Jump to the next search result on either active cursor after the current index
     pub fn jump_next_search_result<B: Backend>(&mut self, printer: &mut B) {
         let search_data = self.search_data();
         let next = match SearchResults::nearest_next_result(&search_data, |addr, right| {
@@ -369,6 +383,7 @@ impl Unaligned {
         };
         self.goto_index(printer, next)
     }
+    /// Jump to the previous search reult on either active cursor before the current index
     pub fn jump_prev_search_result<B: Backend>(&mut self, printer: &mut B) {
         let search_data = self.search_data();
         let next = match SearchResults::nearest_prev_result(&search_data, |addr, right| {
@@ -379,6 +394,7 @@ impl Unaligned {
         };
         self.goto_index(printer, next)
     }
+    /// Jump to the index where the next bytes are different
     pub fn jump_next_difference<B: Backend>(&mut self, printer: &mut B) {
         // skip half a page
         let first_address = (self.cursor_index()
@@ -407,6 +423,7 @@ impl Unaligned {
         let index = self.active_data_bounds().end - 1;
         self.goto_index(printer, index)
     }
+    /// Adds a batch of search results to the current ones if they are of the same query.
     pub fn add_search_results(
         &mut self,
         query: Query,
@@ -426,6 +443,7 @@ impl Unaligned {
             search.add_match(result.clone())
         }
     }
+    /// Clears the search results of the currently active cursors
     pub fn clear_search(&mut self) {
         if self.cursor_act.is_first() {
             self.searches.0 = None
@@ -434,6 +452,8 @@ impl Unaligned {
             self.searches.1 = None
         }
     }
+    /// Initializes the empty search results for the search query
+    /// on the currently active cursors
     pub fn setup_search(
         &mut self,
         query: Query,
@@ -495,6 +515,7 @@ impl Unaligned {
             }
         }
     }
+    /// Returns the active search query for one of the currently cursors
     pub fn current_search_query(&self) -> Option<&Query> {
         if self.cursor_act.is_first() {
             [&self.searches.0, &self.searches.1]
@@ -594,6 +615,7 @@ impl Aligned {
             ..self.index + (self.dh.cursor.get_size_x() * self.dh.cursor.get_size_y()) as isize;
         !(self_range.start >= range.end || self_range.end <= range.start)
     }
+    /// returns the search results visible in the current view
     fn search_ranges(&self) -> [Vec<(usize, usize)>; 2] {
         let intersect_range =
             |a: Range<isize>, b: Range<isize>| a.start.max(b.start)..a.end.min(b.end);
@@ -657,6 +679,7 @@ impl Aligned {
         }
         content
     }
+    /// returns the current index of the cursor into the data
     fn cursor_index(&self) -> isize {
         self.index + self.dh.cursor.get_index() as isize
     }
@@ -762,11 +785,13 @@ impl Aligned {
         let changed = self.resize(printer.size());
         self.redraw(printer, changed);
     }
+    /// jump to a given index with the currently active cursor
     pub fn goto_index<B: Backend>(&mut self, printer: &mut B, index: isize) {
         let address_diff = index - self.cursor_index();
         let (col, row) = self.dh.cursor.jump(address_diff);
         self.move_around(printer, Move::Unbounded(col, row));
     }
+    /// get the index of the current file address with the side given by `right`
     fn index_address(&self, right: bool, pos: usize) -> Result<isize, isize> {
         self.data.binary_search(&pos, |pos, el| {
             Some(*pos).cmp(&el.map(|a| if right { a.yaddr } else { a.xaddr }))
@@ -786,11 +811,13 @@ impl Aligned {
         self.goto_index(printer, address_index);
         Ok(())
     }
+    /// get the file addresses of the current cursors
     fn current_cursor_addresses(&self) -> Option<[usize; 2]> {
         self.data
             .get(self.cursor_index())
             .map(|x| [x.xaddr, x.yaddr])
     }
+    /// Jump to the next search result on either active cursor after the current index
     pub fn jump_next_search_result<B: Backend>(&mut self, printer: &mut B) {
         let [first, second] = self
             .current_cursor_addresses()
@@ -808,6 +835,7 @@ impl Aligned {
         };
         self.goto_index(printer, next)
     }
+    /// Jump to the previous search reult on either active cursor before the current index
     pub fn jump_prev_search_result<B: Backend>(&mut self, printer: &mut B) {
         let [first, second] = match self
             .current_cursor_addresses()
@@ -828,6 +856,7 @@ impl Aligned {
         };
         self.goto_index(printer, next)
     }
+    /// Jump to the index where the next bytes are different
     pub fn jump_next_difference<B: Backend>(&mut self, printer: &mut B) {
         // skip half a page
         let first_address = (self.cursor_index()
@@ -854,6 +883,7 @@ impl Aligned {
     pub fn jump_end<B: Backend>(&mut self, printer: &mut B) {
         self.goto_index(printer, self.data.bounds().end - 1)
     }
+    /// Adds a batch of search results to the current ones if they are of the same query.
     pub fn add_search_results(
         &mut self,
         query: Query,
@@ -873,9 +903,12 @@ impl Aligned {
             search.add_match(result.clone())
         }
     }
+    /// Clears the search results of both cursors
     pub fn clear_search(&mut self) {
         self.searches = (None, None);
     }
+    /// Initializes the empty search results for the search query
+    /// on the currently active cursors
     pub fn setup_search(
         &mut self,
         query: Query,
@@ -932,6 +965,7 @@ impl Aligned {
             _ => (),
         }
     }
+    /// Returns the active search query for one of the currently cursors
     pub fn current_search_query(&self) -> Option<&Query> {
         [&self.searches.0, &self.searches.1]
             .iter()
@@ -1006,6 +1040,8 @@ impl View for Aligned {
     }
 }
 
+/// checks if addr is in the current element of `iter` and if not,
+/// moves it ahead
 fn is_next_search_result<O: Ord + Copy>(
     iter: &mut Peekable<impl Iterator<Item = (O, O)>>,
     addr: O,

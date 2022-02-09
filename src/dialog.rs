@@ -131,6 +131,8 @@ fn apply_algorithm(siv: &mut Cursive) {
     }
 }
 
+/// Executes function either on aligned or unaligned hexview in current cursive
+/// context
 fn on_hexview<F, G, T>(siv: &mut Cursive, aligned: F, unaligned: G) -> T
 where
     F: FnOnce(&mut Aligned) -> T,
@@ -383,6 +385,11 @@ pub fn style(siv: &mut Cursive) -> impl View {
         .user_data::<Settings>()
         .expect("Could not get style settings from cursive")
         .style;
+    // checkboxes for:
+    // * ascii column
+    // * vertical split
+    // * hex spacers
+    // * right to left mode
     let left_side = LinearLayout::vertical()
         .child(
             ListView::new()
@@ -493,6 +500,7 @@ fn save_settings(siv: &mut Cursive) {
     }
 }
 
+/// A settings dialog to choose between algorithm and style settings
 pub fn settings(siv: &mut Cursive) {
     siv.add_layer(
         Dialog::around(
@@ -523,6 +531,7 @@ pub fn settings(siv: &mut Cursive) {
     )
 }
 
+/// A dialog to go to a given position in the hexview
 pub fn goto(siv: &mut Cursive) {
     let parse_hex = |s: &str| usize::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16);
     let call_goto = move |s: &mut Cursive, right: bool| {
@@ -535,6 +544,8 @@ pub fn goto(siv: &mut Cursive) {
             .and_then(|pos| {
                 on_hexview(
                     s,
+                    // we pass the dummy printer because we do not need
+                    // to draw when we are in the cursive backend
                     move |v| v.goto(&mut crate::backend::Dummy, right, pos),
                     move |v| v.goto(&mut crate::backend::Dummy, right, pos),
                 )
@@ -570,6 +581,7 @@ const SEARCH_DIALOG: &str = "search dialog";
 const SEARCH_BOX: &str = "search box";
 const SEARCH_MODE: &str = "search mode";
 
+/// A dialog for searching bytes in the hexview
 pub fn search(siv: &mut Cursive) {
     let query = on_hexview(
         siv,
@@ -582,6 +594,7 @@ pub fn search(siv: &mut Cursive) {
         QueryType::Hexagex => 2,
     };
     let query_text = query.as_ref().map_or("", |x| x.text());
+    // this pops up on regex compilation errors
     let do_search = |s: &mut Cursive| {
         if let Err(e) = on_search(s) {
             s.add_layer(
@@ -624,6 +637,7 @@ pub fn search(siv: &mut Cursive) {
 
 const SEARCH_BUFFER_SIZE: usize = 1000000;
 
+/// Action to execute when submitting a search
 fn on_search(siv: &mut Cursive) -> Result<(), String> {
     let content = siv
         .call_on_name(SEARCH_BOX, |view: &mut EditView| {
@@ -641,6 +655,7 @@ fn on_search(siv: &mut Cursive) -> Result<(), String> {
                 .ok_or_else(|| String::from("No search mode selected!"))
         })
         .unwrap()?;
+    // restore the dialog fields from the saved query
     let query_type = match *search_mode.as_ref() {
         "text" => QueryType::Text,
         "regex" => QueryType::Regex,
@@ -654,6 +669,8 @@ fn on_search(siv: &mut Cursive) -> Result<(), String> {
         move |v| v.setup_search(q1),
         move |v| v.setup_search(query),
     );
+    // close the search dialog and show a status window showing progress
+    // of the current search
     siv.pop_layer();
     search_result_status(siv, 1 + second.is_some() as usize);
 
@@ -674,10 +691,15 @@ fn on_search(siv: &mut Cursive) -> Result<(), String> {
 }
 
 const SEARCH_STATS: &str = "search stats";
+/// view that shows the progress of the current search
 struct SearchResultStats {
     view: BoxedView,
+    /// the total count of search results
     count: usize,
+    /// the count is to track when to close the window,
+    /// as there are two search processes for both halves
     usage_count: usize,
+    /// "Results: {self.count}..."
     text: TextContent,
 }
 
@@ -692,6 +714,7 @@ impl SearchResultStats {
     }
 }
 
+/// create a new view showing the search progress
 fn search_result_status(siv: &mut Cursive, usage_count: usize) {
     let count = 0;
     let content = TextContent::new("Results: 0...");
@@ -706,6 +729,7 @@ fn search_result_status(siv: &mut Cursive, usage_count: usize) {
     siv.add_layer(search_result_stats.with_name(SEARCH_STATS))
 }
 
+/// creates an adapter to put the search results into
 fn search_result_receiver(
     cb: cursive::CbSink,
     context: SearchContext,
@@ -717,6 +741,9 @@ fn search_result_receiver(
     }
 }
 
+/// use a list of search results to update the progress window and
+/// maybe close it and jump the hexview to the next result when
+/// finished.
 fn add_search_results(
     siv: &mut Cursive,
     results: Vec<Option<Range<usize>>>,
@@ -758,6 +785,8 @@ fn add_search_results(
     };
 }
 
+/// "set offset" dialog, which can set the offset of an unaligned view
+/// in various ways
 pub fn set_offset(siv: &mut Cursive) {
     if on_hexview(siv, |_| true, |_| false) {
         return;
@@ -796,9 +825,12 @@ pub fn set_offset(siv: &mut Cursive) {
 }
 
 const FLAT_ALIGNMENT_PROGRESS: &str = "flat alignment progress";
+/// Shows the progress of the flat alignment from the "set offset" dialog
 pub struct FlatAlignmentProgress {
     view: BoxedView,
+    /// Boolean to cancel the aligning process
     is_running: Arc<AtomicBool>,
+    /// Progress counter (0 to 256)
     counter: Arc<AtomicUsize>,
 }
 
@@ -807,6 +839,8 @@ impl ViewWrapper for FlatAlignmentProgress {
 }
 
 impl FlatAlignmentProgress {
+    /// opens a new  flat alignment progress dialog and starts the alignment process
+    /// which calls back with the results later
     pub fn make_new(siv: &mut Cursive) {
         let content = match siv.call_on_name("unaligned", |s: &mut Unaligned| s.data.clone()) {
             Some(c) => [c.xvec, c.yvec],
@@ -860,6 +894,11 @@ impl FlatAlignmentProgress {
     }
 }
 
+/// the alignment process sends back messages of two kinds:
+///  * incomplete messages, which include the current progress (from 0 to 256)
+///  * an complete message, which is the last message and contains the result offset
+///  this callback either updates the progress bar or applies the result to the
+///  unaligned hexview
 fn aligned_callback(
     sink: CbSink,
     is_running: Arc<AtomicBool>,

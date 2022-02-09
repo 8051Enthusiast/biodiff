@@ -3,12 +3,21 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// a channel that bunches up data into vectors if there is too much data at once
+/// (to avoid too many callbacks to cursive)
+/// used by the rate_limit_channel function
 struct RateLimitedChannel<T: Finalable + Send, F: FnMut(Vec<T>) -> bool + Send + 'static> {
+    /// the receiver of the input
     input: Receiver<Option<T>>,
+    /// the function where batched up data is sent to
     receiver: F,
+    /// maximum size of a batch
     size: usize,
+    /// how long to wait until the batch is sent if it did not fill up
     refresh_period: Duration,
+    /// last time a batch was sent
     last_refresh: Option<Instant>,
+    /// buffer for current batch
     element_buffer: Vec<T>,
 }
 
@@ -19,6 +28,7 @@ impl<T: Finalable + Send + 'static, F: FnMut(Vec<T>) -> bool + Send + 'static>
         std::thread::spawn(move || {
             let period = self.refresh_period;
             for i in self.input {
+                // if we reached our buffer size, we clear it
                 if self.element_buffer.len() >= self.size {
                     if !(self.receiver)(self.element_buffer) {
                         break;
@@ -50,6 +60,9 @@ impl<T: Finalable + Send + 'static, F: FnMut(Vec<T>) -> bool + Send + 'static>
     }
 }
 
+/// trait for types which can have a final value that is sent last
+/// for the purpose of hanging up the RateLimitedChannel since there
+/// is a timer thread that would not get deleted otherwise
 pub trait Finalable {
     fn is_final(&self) -> bool;
 }
@@ -69,6 +82,8 @@ where
     }
 }
 
+/// construct a rate limited channel of maximum buffer size `size`, refresh period `period`
+/// and a receiver where data is pushed to, that returns a function that accepts data
 pub fn rate_limit_channel<T: Finalable + Send + 'static>(
     size: usize,
     period: Duration,
@@ -95,6 +110,7 @@ pub fn rate_limit_channel<T: Finalable + Send + 'static>(
     move |t| input_channel_send.send(Some(t)).is_ok()
 }
 
+/// returns the entropy of a blob of data
 pub fn entropy(data: &[u8]) -> f32 {
     let mut counts = vec![0usize; 256];
     for byte in data {

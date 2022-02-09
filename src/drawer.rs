@@ -377,11 +377,17 @@ impl CursorState {
 
         dev_y * self.size.0 as isize + dev_x
     }
+    /// when trying to move xdiff in the x direction,
+    /// this returns the actual amount you can move without
+    /// going out of bounds
     fn restrict_xdiff(&self, xdiff: isize, bounds: Range<isize>) -> isize {
         let cursor_pos = self.get_index() as isize;
         let xdiff_bounds = (bounds.start - cursor_pos)..(bounds.end - cursor_pos);
         xdiff.clamp(xdiff_bounds.start, xdiff_bounds.end - 1)
     }
+    /// when trying to move ydiff in the y direction,
+    /// this returns the actual amount you can move without
+    /// going out of bounds
     fn restrict_ydiff(&self, ydiff: isize, bounds: Range<isize>) -> isize {
         let cursor_pos = self.get_index() as isize;
         let width = self.get_size_x() as isize;
@@ -389,18 +395,21 @@ impl CursorState {
             ((bounds.start - cursor_pos) / width)..((bounds.end - cursor_pos - 1) / width);
         ydiff.clamp(ydiff_bounds.start, ydiff_bounds.end)
     }
+    /// move cursor in x direction without going out of bounds
     pub fn move_cursor_x_bounded(&mut self, xdiff: isize, bounds: Range<isize>) -> isize {
         if bounds.is_empty() {
             return 0;
         }
         self.move_cursor_unbounded(self.restrict_xdiff(xdiff, bounds), 0)
     }
+    /// move cursor in y direction without going out of bounds
     pub fn move_cursor_y_bounded(&mut self, ydiff: isize, bounds: Range<isize>) -> isize {
         if bounds.is_empty() {
             return 0;
         }
         self.move_cursor_unbounded(0, self.restrict_ydiff(ydiff, bounds))
     }
+    /// move the view in x direction without going out of bounds
     pub fn move_view_x_bounded(&mut self, xdiff: isize, bounds: Range<isize>) -> isize {
         if bounds.is_empty() {
             return 0;
@@ -416,6 +425,7 @@ impl CursorState {
 
         actual_xdiff
     }
+    /// move the view in y direction without going out of bounds
     pub fn move_view_y_bounded(&mut self, ydiff: isize, bounds: Range<isize>) -> isize {
         if bounds.is_empty() {
             return 0;
@@ -432,6 +442,8 @@ impl CursorState {
 
         actual_ydiff * width
     }
+    /// moves according to the information in the move struct without going
+    /// out of bounds
     pub fn mov(&mut self, movement: Move, bounds: Range<isize>) -> isize {
         match movement {
             Move::Unbounded(xdiff, ydiff) => self.move_cursor_unbounded(xdiff, ydiff),
@@ -495,6 +507,9 @@ pub enum Move {
 }
 
 impl Move {
+    /// reflects the x direction in case right-to-left mode
+    /// is enabled, since we do not actually want to mirror
+    /// the x movements so we mirror them back
     pub fn reflect_rtl(self) -> Self {
         match self {
             // unbounded are used by internal functions,
@@ -520,6 +535,10 @@ impl Style {
     fn size_per_byte(&self) -> usize {
         self.mode.size_per_byte() + self.ascii_col as usize
     }
+    /// width of n columns
+    ///
+    /// (note that this is differnt than calling nth_column_pos
+    /// and adding an cursor offset because rtl could be enabled)
     pub fn n_column_width(&self, n: usize) -> usize {
         if n == 0 {
             return 0;
@@ -531,6 +550,7 @@ impl Style {
                 0
             }
     }
+    /// width of one of the two hex screens
     pub fn half_width(&self, n: usize) -> usize {
         ADDR_SIZE
             + FRONT_PAD.width()
@@ -541,12 +561,14 @@ impl Style {
             }
             + self.n_column_width(n)
     }
+    /// the position of the first character of the nth hex column
     pub fn nth_column_pos(&self, n: usize) -> usize {
         self.mode.size_per_byte() * n
             + if self.spacer { n / SPACER_PERIOD } else { 0 }
             + if self.right_to_left { 0 } else { ADDR_SIZE }
             + FRONT_PAD.width()
     }
+    /// the amount of characters that are on a line regardless of column number
     fn const_overhead(&self) -> usize {
         let single_overhead = ADDR_SIZE
             + FRONT_PAD.width()
@@ -614,6 +636,7 @@ pub struct DoubleHexContext {
 }
 
 impl DoubleHexContext {
+    /// Creates a new DoubleHexContext with default style
     pub fn new(size: (usize, usize)) -> Self {
         let cursor = CursorState::new(size);
         DoubleHexContext {
@@ -621,9 +644,11 @@ impl DoubleHexContext {
             style: Style::default(),
         }
     }
+    /// width of a screen half when in horizontal split
     fn hor_half_width(&self) -> usize {
         self.style.half_width(self.cursor.get_size_x())
     }
+    /// height of a screen half when in vertical split
     fn vert_half_height(&self) -> usize {
         self.cursor.get_size_y() + 1
     }
@@ -657,6 +682,7 @@ impl DoubleHexContext {
         }
     }
 
+    /// returns the position of the first cursor on the hex view
     fn first_cursor(&self) -> (usize, usize) {
         let col = if self.style.right_to_left {
             self.cursor.get_size_x() - 1 - self.cursor.get_x()
@@ -668,6 +694,7 @@ impl DoubleHexContext {
         (ret_x, ret_y)
     }
 
+    /// returns the position of the first cursor on the ascii view
     fn first_cursor_ascii(&self) -> Option<(usize, usize)> {
         if !self.style.ascii_col {
             return None;
@@ -685,7 +712,7 @@ impl DoubleHexContext {
         let ret_y = self.cursor.get_y() + 1;
         Some((ret_x, ret_y))
     }
-
+    /// returns the position of the second cursor on the hex view
     fn second_cursor(&self) -> (usize, usize) {
         let (first_x, first_y) = self.first_cursor();
         if self.style.vertical {
@@ -698,6 +725,7 @@ impl DoubleHexContext {
         }
     }
 
+    /// returns the position of the second cursor on the ascii view
     fn second_cursor_ascii(&self) -> Option<(usize, usize)> {
         let (first_x, first_y) = self.first_cursor_ascii()?;
         if self.style.vertical {

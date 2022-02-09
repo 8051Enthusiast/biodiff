@@ -1,10 +1,26 @@
+//! Transforms a hexagex -- a regex written using hexadecimal -- into a regex matching on the binary data.
+//!
+//! The syntax is mostly the same as in the regex crate, but the literals have been replaced:
+//! * `0`-`9`, `a`-`f`: 4-bits sequences interpreted as base 16 numbers
+//! * `.`: 4-bit wildcard
+//! * `O`, `I`: 1-bit value corresponding to 0 and 1
+//! * `_`: 1-bit wildcard
+//! * `^`, `$`: these match the start and end of the text, not of the line
+//! * `\t`: this is an escape to interprete the content immediately after it into a non-hexagex regular regex
+//!
+//! Repetitions (`*` etc.), alternations (`a | b`) and groups (`(a)`) require their inner expressions
+//! to have a multiple of bits, otherwise an error is generated.
+//! Classes like [1-e] require all their elements to have the same number of bits.
 pub use regex::bytes as regex_bytes;
 use regex_syntax::ast::{self, Ast, Span};
 use std::fmt::Write;
 use std::ops::Deref;
 
+/// Convert the hexagex given in `hexagex` into a regex from `regex::bytes` you can use to match.
 pub fn hexagex(hexagex: &str) -> Result<regex_bytes::Regex, Error> {
     || -> Result<regex_bytes::Regex, InternalError> {
+        // we generate the regex by parsing the ast using the regex_syntax parser, transforming
+        // it, turning it back into text and then parse it again using the regex crate
         let ast = ast::parse::ParserBuilder::new()
             .ignore_whitespace(false)
             .build()
@@ -20,7 +36,6 @@ pub fn hexagex(hexagex: &str) -> Result<regex_bytes::Regex, Error> {
             .case_insensitive(false)
             .unicode(false)
             .multi_line(true)
-            .octal(true)
             .dot_matches_new_line(true)
             .build()?;
         Ok(regex)
@@ -28,6 +43,11 @@ pub fn hexagex(hexagex: &str) -> Result<regex_bytes::Regex, Error> {
     .map_err(|x| Error::new(x, hexagex))
 }
 
+// the way the conversion of the ast with hex literals work is that we collect "PartialSequences"
+// which is basically an array of PartialElements, which are a set of values all with the same
+// bit widths.
+// Once we get to a node that needs a full ast, we force the PartialSequence back into an ast
+// by bunching up the PartialElements into bytes.
 fn binary_ast_to_final_ast(ast: &Ast) -> Result<Ast, InternalError> {
     match binary_ast_to_maybe_ast(ast)? {
         Either::Left(l) => l.try_into(),
@@ -35,15 +55,22 @@ fn binary_ast_to_final_ast(ast: &Ast) -> Result<Ast, InternalError> {
     }
 }
 
+// convert the hexagex ast either into a regular ast or a partialsequence which is then later turned
+// into an ast
 fn binary_ast_to_maybe_ast(ast: &Ast) -> Result<Either<PartialSequence, Ast>, InternalError> {
     match ast {
+        // if we encounter a literal here, that means this is an invalid position for it,
+        // since it is only allowed within concat nodes, where the subnode is explicitely checked
+        // for escaped literals
         Ast::Literal(lit) if is_text_escape_literal(lit) => {
             Err(InternalError::IncompleteEscape(lit.span))
         }
+        // literals, dots etc. are collected into partial sequences and not yet into an ast
         Ast::Literal(lit) => Ok(Either::Left(PartialElement::try_from(lit)?.sequence())),
         Ast::Dot(span) => Ok(Either::Left(
             PartialElement::full(4, Some(*span)).sequence(),
         )),
+        // turn ^ and $ into \A and \z
         Ast::Assertion(a) => match a.kind {
             ast::AssertionKind::StartLine => Ok(Either::Right(Ast::Assertion(ast::Assertion {
                 kind: ast::AssertionKind::StartText,
@@ -55,7 +82,10 @@ fn binary_ast_to_maybe_ast(ast: &Ast) -> Result<Either<PartialSequence, Ast>, In
             }))),
             _ => Err(InternalError::InvalidCharacter(a.span)),
         },
+        // classes are an amalgation of values all of the same bit width, so they are a PartialSequence
         Ast::Class(c) => Ok(Either::Left(PartialElement::try_from(c)?.sequence())),
+        // these require their children to be a multiple of 8 bits, which is done implicitely
+        // by the binary_ast_to_final_ast function
         Ast::Repetition(l) => Ok(Either::Right(Ast::Repetition(ast::Repetition {
             ast: Box::new(binary_ast_to_final_ast(&l.ast)?),
             span: l.span,
@@ -91,14 +121,16 @@ impl TryFrom<&ast::Concat> for PartialSequence {
         let mut elements = Vec::new();
         let mut escape_span = None;
         for ast in value.asts.iter() {
+            // if we have encountered an escape sequence in the previous node, keep the subast as-is
             if escape_span.is_some() {
                 escape_span = None;
                 elements.push(Either::Right(ast.clone()));
                 continue;
             }
             match ast {
-                Ast::Concat(v) => elements.append(&mut PartialSequence::try_from(v)?.elements),
+                // check whether the next node is to be escaped
                 Ast::Literal(lit) if is_text_escape_literal(lit) => escape_span = Some(lit.span),
+                // otherwise append to the current partialsequence
                 _ => match binary_ast_to_maybe_ast(ast)? {
                     Either::Left(mut l) => elements.append(&mut l.elements),
                     Either::Right(r) => elements.push(Either::Right(r)),
@@ -204,6 +236,9 @@ impl TryFrom<&ast::ClassSetItem> for PartialElement {
     fn try_from(value: &ast::ClassSetItem) -> Result<Self, Self::Error> {
         match value {
             ast::ClassSetItem::Empty(span) => Ok(PartialElement::empty(Some(*span))),
+            // in classes, text escapes are not allowed since that would make stuff complicated
+            // and you can get pretty much the same functionality by just putting the \t before
+            // the bracket
             ast::ClassSetItem::Literal(lit) if is_text_escape_literal(lit) => {
                 Err(InternalError::InvalidEscapePosition(lit.span))
             }
@@ -219,6 +254,9 @@ impl TryFrom<&ast::ClassSetItem> for PartialElement {
 }
 
 fn is_text_escape_literal(lit: &ast::Literal) -> bool {
+    // yes we are matching against a tab character, \t, to determine
+    // whether to escape, we are already messing around with the semantics
+    // of the characters anyway
     matches!(
         lit.kind,
         ast::LiteralKind::Special(ast::SpecialLiteralKind::Tab)
@@ -230,6 +268,7 @@ impl TryFrom<&ast::Literal> for PartialElement {
 
     fn try_from(value: &ast::Literal) -> Result<Self, Self::Error> {
         let (val, len) = match value.kind {
+            // ignore whitespace
             ast::LiteralKind::Verbatim if [' ', '\t', '\n'].contains(&value.c) => {
                 return Ok(PartialElement::empty(Some(value.span)))
             }
@@ -255,6 +294,8 @@ impl TryFrom<&ast::Literal> for PartialElement {
             ast::LiteralKind::Octal
             | ast::LiteralKind::HexFixed(ast::HexLiteralKind::X)
             | ast::LiteralKind::HexBrace(_) => {
+                // characters like \x00-\xff are still recognized as their bytes
+                // with an bit length of 8
                 let v = value.c as u32;
                 match u8::try_from(v) {
                     Ok(x) => (x, 8),
@@ -275,6 +316,8 @@ impl TryFrom<&ast::ClassSetRange> for PartialElement {
     type Error = InternalError;
 
     fn try_from(value: &ast::ClassSetRange) -> Result<Self, Self::Error> {
+        // make sure we do not have an escape on our hands,
+        // which are not allowed inside classes
         if let Some(lit) = [&value.start, &value.end]
             .iter()
             .find(|x| is_text_escape_literal(x))
@@ -306,6 +349,7 @@ impl TryFrom<&ast::ClassSetRange> for PartialElement {
 impl From<&ast::ClassAscii> for PartialElement {
     fn from(value: &ast::ClassAscii) -> Self {
         let ranges = match value.kind {
+            // taken straight from the documentation of the regex_syntax crate
             ast::ClassAsciiKind::Alnum => [b'0'..=b'9', b'A'..=b'Z', b'a'..=b'z'].as_ref(),
             ast::ClassAsciiKind::Alpha => &[b'A'..=b'Z', b'a'..=b'z'],
             ast::ClassAsciiKind::Ascii => &[0x00..=0x7f],
@@ -362,15 +406,19 @@ impl TryFrom<PartialSequence> for Ast {
             span: value.span,
             asts: Vec::new(),
         };
+        // the current byte batch
+        // we add it to the ast each time get get a full 8 bits
         let mut current_byte_values = PartialElement::empty(None);
         for element in value.elements {
             let element = match element {
                 Either::Left(partial) => partial,
                 Either::Right(astpart) => {
+                    // if we get a non-partial ast,
+                    // we must ensure that we have a multiple of 8 bits before it
                     if current_byte_values.length > 0 {
                         ast.asts.push(current_byte_values.try_into()?);
                         current_byte_values = PartialElement::empty(Some(Span::new(
-                            astpart.span().start,
+                            astpart.span().end,
                             astpart.span().end,
                         )));
                     }
@@ -378,6 +426,7 @@ impl TryFrom<PartialSequence> for Ast {
                     continue;
                 }
             };
+            // split at the next byte boundary
             let (new_byte_values, next_byte_values) = element.split(8 - current_byte_values.length);
             current_byte_values = current_byte_values.concat(&new_byte_values);
             if let Some(byte_values) = next_byte_values {
@@ -400,12 +449,13 @@ struct PartialSequence {
 
 #[derive(Debug)]
 struct PartialElement {
-    /// up to 8
+    /// bit length up to 8
     length: u8,
     span: Option<Span>,
     values: Vec<u8>,
 }
 
+/// Adds a byte range to an ast class (for conversion of PartialSequence back into ast)
 fn add_byte_range_to_class(class: &mut ast::ClassSetUnion, range: (u8, u8)) {
     let byte_literal = |x: u8| ast::Literal {
         span: class.span,
@@ -424,6 +474,7 @@ fn add_byte_range_to_class(class: &mut ast::ClassSetUnion, range: (u8, u8)) {
     class.items.push(new);
 }
 
+/// convert a PartialElement of bit width 8 back into an ast
 impl TryFrom<PartialElement> for Ast {
     type Error = InternalError;
 
@@ -440,6 +491,7 @@ impl TryFrom<PartialElement> for Ast {
                 span,
             }));
         }
+        // this is just so the resulting ast is prettier
         if let [v] = value.values.as_slice() {
             return Ok(Ast::Literal(ast::Literal {
                 span,
@@ -451,6 +503,7 @@ impl TryFrom<PartialElement> for Ast {
             span,
             items: Vec::new(),
         };
+        // bunch up into ranges when we get contingent values
         let mut current_range = match value.values.get(0) {
             None => return Ok(Ast::Empty(span)),
             Some(a) => (*a, *a),
@@ -524,13 +577,12 @@ impl std::ops::Sub for &PartialElement {
     type Output = PartialElement;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        self.map_pair(rhs, |a, b| {
-            a.and_then(|x| if b.is_some() { None } else { Some(x) })
-        })
+        self.map_pair(rhs, |a, b| a.filter(|_| b.is_some()))
     }
 }
 
 impl PartialElement {
+    /// convert a range of values with given bit lengths into a PartialElement
     fn from_range(ranges: &[std::ops::RangeInclusive<u8>], span: Span, length: u8) -> Self {
         let mut values = Vec::new();
         values.extend(ranges.iter().flat_map(|x| x.clone()));
@@ -540,6 +592,7 @@ impl PartialElement {
             values,
         }
     }
+    /// split element into before the given offset and after if there are bits after the boundary
     fn split(self, byte_bound_offset: u8) -> (Self, Option<Self>) {
         if byte_bound_offset >= self.length {
             return (self, None);
@@ -548,9 +601,10 @@ impl PartialElement {
         let next = self.extract_low(byte_bound_offset);
         (first, Some(next))
     }
+    /// extract the part of the element beyond the boundary
     fn extract_low(&self, split_point: u8) -> Self {
         let new_len = self.length - split_point;
-        let mask = self.max_possible();
+        let mask = ((1u16 << new_len) as u8).wrapping_sub(1);
         let mut ret = Vec::new();
         if new_len > 0 {
             for value in self.values.iter().map(|x| x & mask) {
@@ -559,7 +613,12 @@ impl PartialElement {
                 }
             }
         } else {
-            ret = vec![0];
+            // minor optimization for zero-lengths
+            ret = if self.values.is_empty() {
+                vec![]
+            } else {
+                vec![0]
+            };
         }
         PartialElement {
             length: new_len,
@@ -567,6 +626,7 @@ impl PartialElement {
             values: ret,
         }
     }
+    /// extract the part of the element before the boundary
     fn extract_high(&self, split_point: u8) -> Self {
         let mut ret = Vec::new();
         if split_point != self.length {
@@ -588,6 +648,7 @@ impl PartialElement {
             values: ret,
         }
     }
+    /// concatenate two elements that have a combined length less than or equal to 8
     fn concat(&self, rhs: &Self) -> Self {
         PartialElement {
             values: self
@@ -603,11 +664,14 @@ impl PartialElement {
             span: combine_spans(self.span, rhs.span),
         }
     }
+    /// Map same-value pairs from two elements together.
+    /// The value must appear in at least one of them to be mapped.
     fn map_pair<F: FnMut(Option<u8>, Option<u8>) -> Option<u8>>(
         &self,
         other: &Self,
         mut f: F,
     ) -> Self {
+        // iterators of next value, ordered reverse so that we prioritize lower values over None
         let mut self_value = self.values.iter().map(|x| std::cmp::Reverse(*x)).peekable();
         let mut other_value = other
             .values
@@ -637,6 +701,7 @@ impl PartialElement {
             values: ret,
         }
     }
+    /// value of zero-lenghts with a single value of 0
     fn empty(span: Option<Span>) -> Self {
         Self {
             length: 0,
@@ -644,6 +709,7 @@ impl PartialElement {
             values: vec![0],
         }
     }
+    /// wildcard of given length
     fn full(len: u8, span: Option<Span>) -> Self {
         let mut r = Self {
             length: len,
@@ -653,21 +719,26 @@ impl PartialElement {
         r.values = (0..=r.max_possible()).collect();
         r
     }
+    /// turn single element into a sequence of one element
     fn sequence(self) -> PartialSequence {
         PartialSequence {
             span: self.span.unwrap(),
             elements: vec![Either::Left(self)],
         }
     }
+    /// gets the maximum possible value the element could have
+    /// with the given bit length
     fn max_possible(&self) -> u8 {
         ((1u16 << self.length) as u8).wrapping_sub(1)
     }
+    /// replace the span of the current element
     fn with_span(mut self, span: Span) -> Self {
         self.span = Some(span);
         self
     }
 }
 
+/// merge two span options
 fn combine_spans(lhs: Option<Span>, rhs: Option<Span>) -> Option<Span> {
     match (lhs, rhs) {
         (None, None) => None,
@@ -676,9 +747,12 @@ fn combine_spans(lhs: Option<Span>, rhs: Option<Span>) -> Option<Span> {
     }
 }
 
+/// An error from either the hexagex transformation process or the regex compilation itself
 #[derive(Debug)]
 pub enum Error {
+    /// Error stemming from the regex compilation/ast parsing
     RegexError(String),
+    /// Error stemming from the ast transformation (e.g. bit length mismatch, unsupported characters)
     HexagexError(String),
 }
 
@@ -693,6 +767,7 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
+/// write the regex with an underline given by span
 fn write_with_span(regex: &str, span: Span) -> String {
     let mut out = String::new();
     let lines = regex.lines().collect::<Vec<_>>();
@@ -711,6 +786,9 @@ fn write_with_span(regex: &str, span: Span) -> String {
             } else {
                 line.len()
             } - start;
+            // we do not really support unicode anyway, so i'm leaving
+            // this to be wrong for now (the original regex crate does
+            // it wrong in any case)
             out.extend(
                 std::iter::repeat(' ')
                     .take(start)
@@ -787,12 +865,19 @@ impl Error {
 
 #[derive(Debug)]
 enum InternalError {
+    /// error during compilation or ast parsing
     RegexError(String),
+    /// mostly used when 8 bits are required alignment that is not matched
     AlignmentError(AlignmentError),
+    /// used for character classes that have different bit lengths
     LengthMismatch(LengthMismatch),
+    /// generated by unicode character classes or characters
     Unicode(Span),
+    /// generated by invalid characters
     InvalidCharacter(Span),
+    /// when \t is before nothing
     IncompleteEscape(Span),
+    /// when \t is inside a class
     InvalidEscapePosition(Span),
 }
 
@@ -839,6 +924,8 @@ mod tests {
             .find_iter(&content)
             .collect::<Vec<_>>()
     }
+    /// turns an underline string that looks somewhat like "  ^----$  " into the ranges
+    /// represented by it
     fn get_underline_ranges(underline: &str) -> Vec<std::ops::Range<usize>> {
         let mut current_range = None;
         let mut ranges = Vec::new();
@@ -867,6 +954,7 @@ mod tests {
         }
         ranges
     }
+    /// test whether the given regex matches the underlined ranges and only them
     fn test_matches(regex: &str, hexcontent: &str, underlined: &str) {
         //println!("{}", hexagex(regex).unwrap().to_string());
         let content = h(hexcontent);

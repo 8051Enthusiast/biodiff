@@ -8,9 +8,14 @@ use regex::bytes::{Regex, RegexBuilder};
 use crate::file::FileContent;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// The three query types, which are all compiled to a regex, but with
+/// different options
 pub enum QueryType {
+    /// plain unescaped text
     Text,
+    /// a normal regex
     Regex,
+    /// a regex using hex characters
     Hexagex,
 }
 
@@ -23,6 +28,8 @@ pub struct Query {
 
 impl PartialEq for Query {
     fn eq(&self, other: &Self) -> bool {
+        // we do not compare the compiled regex, since it is already uniquely determined
+        // by text and query_type
         self.text == other.text && self.query_type == other.query_type
     }
 }
@@ -32,6 +39,8 @@ impl Eq for Query {}
 impl Query {
     pub fn new(query_type: QueryType, text: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let regex = match query_type {
+            // unicode is disabled because it is likely that one wants to search for non-unicode
+            // in a hex viewer
             QueryType::Text => RegexBuilder::new(&regex::escape(text))
                 .multi_line(true)
                 .unicode(true)
@@ -89,6 +98,7 @@ fn unwrap_both<T>(r: Result<T, T>) -> T {
 }
 
 impl SearchResults {
+    /// Get a new empty search result store for a given query
     pub fn new(query: Query) -> Self {
         SearchResults {
             starts: BTreeMap::new(),
@@ -96,19 +106,24 @@ impl SearchResults {
             query,
         }
     }
+    /// get the query associated with this SearchResults set
     pub fn query(&self) -> &Query {
         &self.query
     }
+    /// add a match range to the set
     pub fn add_match(&mut self, range: Range<usize>) {
         self.starts.insert(range.start, range.end);
         self.ends.insert(range.end, range.start);
     }
+    /// lookup results intersecting with a given range
     pub fn lookup_results(&self, range: Range<usize>) -> BTreeSet<(usize, usize)> {
         let mut set = BTreeSet::new();
+        // union of all results start start within the range and end within the range
         set.extend(self.starts.range(range.clone()).map(|x| (*x.0, *x.1)));
         set.extend(self.ends.range(range).map(|x| (*x.1, *x.0)));
         set
     }
+    /// calculates whether the given address is inside a result
     pub fn is_in_result(&self, addr: Option<usize>) -> bool {
         let addr = match addr {
             Some(a) => a,
@@ -121,6 +136,8 @@ impl SearchResults {
             .next()
             .map_or(false, |(x, y)| (*x..*y).contains(&addr))
     }
+    /// get the next result after addr
+    /// Returns None if there is no result, and Some(Err) if the result is after wraparound
     pub fn next_result(&self, addr: usize) -> Option<Result<Range<usize>, Range<usize>>> {
         match self
             .starts
@@ -134,10 +151,15 @@ impl SearchResults {
             Err(None) => None,
         }
     }
+    /// from a list of search results, find the next result from any of them
+    /// the T is supposed to be data to disambiguate between the multiple
+    /// usize addresses from different search results
     pub fn nearest_next_result<T: Ord + Copy>(
         list: &[(&Option<Self>, usize, T)],
         to_index: impl Fn(usize, T) -> Option<isize>,
     ) -> Option<isize> {
+        // note that Ok(_) < Err(_), so by using min here,
+        // we prioritize results that are not wraparound
         let next = list
             .iter()
             .flat_map(|x| x.0.as_ref().into_iter().map(move |y| (y, x.1, x.2)))
@@ -149,6 +171,8 @@ impl SearchResults {
             .min()?;
         Some(unwrap_both(next))
     }
+    /// get the previous result before addr
+    /// Returns None if there is no result, and Some(Err) if the result is after wraparound
     pub fn prev_result(&self, addr: usize) -> Option<Result<Range<usize>, Range<usize>>> {
         match self
             .ends
@@ -163,10 +187,15 @@ impl SearchResults {
             Err(None) => None,
         }
     }
+    /// from a list of search results, find the previous result from any of them
+    /// the T is supposed to be data to disambiguate between the multiple
+    /// usize addresses from different search results
     pub fn nearest_prev_result<T: Ord + Copy>(
         list: &[(&Option<Self>, usize, T)],
         to_index: impl Fn(usize, T) -> Option<isize>,
     ) -> Option<isize> {
+        // note that Ok(_) < Err(_), so by using min here,
+        // we prioritize results that are not wraparound
         let next = list
             .iter()
             .flat_map(|x| x.0.as_ref().into_iter().map(move |y| (y, x.1, x.2)))
@@ -174,6 +203,8 @@ impl SearchResults {
                 search
                     .prev_result(addr)
                     .and_then(|x| transpose_both(map_both(x, |y| to_index(y.start, right))))
+                    // since we use min to prioritize Ok over Err, reverse the order of the addresses to prioritize later addresses
+                    // (those that are nearer to the original address)
                     .map(|x| map_both(x, std::cmp::Reverse))
             })
             .min()?;
@@ -183,8 +214,11 @@ impl SearchResults {
 
 #[derive(Clone, Debug)]
 pub struct SearchContext {
+    /// what hexpanel this is on (effectively an identifier for the search process)
     pub first: bool,
+    /// original query
     pub query: Query,
+    /// bool for cancelling the search
     pub is_running: Arc<std::sync::atomic::AtomicBool>,
 }
 
