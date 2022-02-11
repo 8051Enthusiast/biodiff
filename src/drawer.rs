@@ -112,6 +112,14 @@ fn disp_ascii(h: Option<u8>) -> String {
     .into()
 }
 
+fn disp_column_blocks(h: Option<u8>) -> String {
+    match h {
+        Some(0) => String::from(" "),
+        Some(c @ 1..=255) => format!("{}", char::from_u32((c as u32 + 31) / 32 + 0x2580).unwrap()),
+        None => String::from("░"),
+    }
+}
+
 fn disp_roman(h: Option<u8>) -> String {
     const ONES: [&str; 10] = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"];
     const TENS: [&str; 10] = ["", "X", "XX", "XXX", "XL", "L", "LX", "LXX", "LXXX", "XC"];
@@ -160,6 +168,22 @@ fn color_from_mixed_bytes(a: Option<ByteData>, b: Option<ByteData>) -> Color {
         color_from_bytes(a, b)
     } else {
         color_secondary_from_bytes(a, b)
+    }
+}
+
+#[repr(usize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum AsciiMode {
+    Ascii,
+    Blocks,
+}
+
+impl AsciiMode {
+    fn disp(&self, h: Option<u8>) -> String {
+        match self {
+            AsciiMode::Ascii => disp_ascii(h),
+            AsciiMode::Blocks => disp_column_blocks(h),
+        }
     }
 }
 
@@ -270,7 +294,7 @@ impl DoubleHexLine {
         if style.ascii_col {
             printer.append_text(MIDDLE_PAD, Color::Unimportant, Effect::None);
             for (a, b) in &bytes {
-                let s = disp_ascii(byte(*a));
+                let s = style.ascii_mode.disp(byte(*a));
                 let color = style.mode.color(*a, *b, line);
                 let effect = byte_effect(*a);
                 printer.append_text(&s, color, effect);
@@ -525,6 +549,7 @@ impl Move {
 #[serde(default)]
 pub struct Style {
     pub mode: DisplayMode,
+    pub ascii_mode: AsciiMode,
     pub ascii_col: bool,
     pub vertical: bool,
     pub spacer: bool,
@@ -622,6 +647,7 @@ impl Default for Style {
     fn default() -> Self {
         Style {
             mode: DisplayMode::Hex,
+            ascii_mode: AsciiMode::Ascii,
             ascii_col: false,
             vertical: false,
             spacer: false,
@@ -812,7 +838,11 @@ impl DoubleHexContext {
         backend.append_text(&first_text, first_color, first_effect);
         if let Some((fx, fy)) = self.first_cursor_ascii() {
             backend.set_pos(fx, fy);
-            backend.append_text(&disp_ascii(byte(at_cursor.0)), first_color, first_effect);
+            backend.append_text(
+                &self.style.ascii_mode.disp(byte(at_cursor.0)),
+                first_color,
+                first_effect,
+            );
         }
 
         // right cursor
@@ -824,7 +854,11 @@ impl DoubleHexContext {
         backend.append_text(&second_text, second_color, second_effect);
         if let Some((sx, sy)) = self.second_cursor_ascii() {
             backend.set_pos(sx, sy);
-            backend.append_text(&disp_ascii(byte(at_cursor.1)), second_color, second_effect);
+            backend.append_text(
+                &self.style.ascii_mode.disp(byte(at_cursor.1)),
+                second_color,
+                second_effect,
+            );
         }
 
         // status bar address

@@ -5,7 +5,7 @@ use crate::{
     },
     backend::Dummy,
     control::Settings,
-    drawer::{DisplayMode, Style},
+    drawer::{AsciiMode, DisplayMode, Style},
     file::FileContent,
     search::{Query, QueryType, SearchContext},
     util::{self, Finalable},
@@ -166,8 +166,15 @@ fn apply_style(siv: &mut Cursive) {
             .selected_id()
             .expect("Display mode select view appears to be empty"),
     );
+    let ascii_mode = number_to_asciimode(
+        &siv.find_name::<SelectView<usize>>("ascii mode")
+            .expect("Could not find ascii mode select view")
+            .selected_id()
+            .expect("Ascii mode select view appears to be empty"),
+    );
     let new_style = Style {
         mode,
+        ascii_mode,
         ascii_col,
         vertical,
         spacer,
@@ -368,6 +375,16 @@ fn number_to_stylemode(x: &usize) -> DisplayMode {
     }
 }
 
+fn number_to_asciimode(x: &usize) -> AsciiMode {
+    match x {
+        0 => AsciiMode::Ascii,
+        1 => AsciiMode::Blocks,
+        otherwise => panic!(
+            "Unknown item number {} for style asciimode setting",
+            otherwise
+        ),
+    }
+}
 pub fn style(siv: &mut Cursive) -> impl View {
     let on_quit = |s: &mut Cursive| {
         let old_style = s
@@ -393,19 +410,6 @@ pub fn style(siv: &mut Cursive) -> impl View {
     let left_side = LinearLayout::vertical()
         .child(
             ListView::new()
-                .child(
-                    "Ascii Column:",
-                    Checkbox::new()
-                        .with_checked(style_settings.ascii_col)
-                        .on_change(|s, check| {
-                            on_hexview(
-                                s,
-                                move |v| v.dh.style.ascii_col = check,
-                                move |v| v.dh.style.ascii_col = check,
-                            )
-                        })
-                        .with_name("ascii_col"),
-                )
                 .child(
                     "Vertical Split:",
                     Checkbox::new()
@@ -444,11 +448,39 @@ pub fn style(siv: &mut Cursive) -> impl View {
                             )
                         })
                         .with_name("right_to_left"),
-                ),
+                )
+                .child(
+                    "Ascii Column:",
+                    Checkbox::new()
+                        .with_checked(style_settings.ascii_col)
+                        .on_change(|s, check| {
+                            on_hexview(
+                                s,
+                                move |v| v.dh.style.ascii_col = check,
+                                move |v| v.dh.style.ascii_col = check,
+                            );
+                            s.call_on_name("ascii mode", |v: &mut SelectView<usize>| {
+                                v.set_enabled(check)
+                            });
+                        })
+                        .with_name("ascii_col"),
+                )
         )
-        .child(Button::new("OK", apply_style))
-        .child(Button::new("Cancel", on_quit))
-        .child(Button::new("Help", help_window(STYLE_HELP)));
+        .child(Panel::new(
+            SelectView::new()
+                .with_all([("Ascii", 0usize), ("Blocks", 1)])
+                .selected(style_settings.ascii_mode as usize)
+                .on_select(|s, t| {
+                    let mode = number_to_asciimode(t);
+                    on_hexview(
+                        s,
+                        move |v| v.dh.style.ascii_mode = mode,
+                        move |v| v.dh.style.ascii_mode = mode,
+                    );
+                })
+                .with_enabled(style_settings.ascii_col)
+                .with_name("ascii mode"),
+        ));
     let right_side = SelectView::new()
         .with_all([
             ("Hex", 0usize),
@@ -475,6 +507,9 @@ pub fn style(siv: &mut Cursive) -> impl View {
                 .child(Panel::new(left_side))
                 .child(Panel::new(right_side)),
         )
+        .button("OK", apply_style)
+        .button("Cancel", on_quit)
+        .button("Help", help_window(STYLE_HELP))
         .title("Style Settings"),
     )
     .on_event(Key::F1, help_window(STYLE_HELP))
