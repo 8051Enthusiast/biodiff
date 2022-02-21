@@ -577,7 +577,7 @@ impl std::ops::Sub for &PartialElement {
     type Output = PartialElement;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        self.map_pair(rhs, |a, b| a.filter(|_| b.is_some()))
+        self.map_pair(rhs, |a, b| a.filter(|_| b.is_none()))
     }
 }
 
