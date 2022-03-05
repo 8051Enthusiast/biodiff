@@ -5,7 +5,7 @@ use crate::{
     },
     backend::Dummy,
     control::Settings,
-    drawer::{AsciiMode, DisplayMode, Style},
+    drawer::{DisplayMode, Style},
     file::FileContent,
     search::{Query, QueryType, SearchContext},
     util::{self, Finalable},
@@ -146,7 +146,11 @@ where
 fn apply_style(siv: &mut Cursive) {
     let ascii_col = siv
         .find_name::<Checkbox>("ascii_col")
-        .expect("Could not find ascii checkbox in settings")
+        .expect("could not find ascii checkbox in settings")
+        .is_checked();
+    let bars_col = siv
+        .find_name::<Checkbox>("bars_col")
+        .expect("could not find bars checkbox in settings")
         .is_checked();
     let vertical = siv
         .find_name::<Checkbox>("vertical")
@@ -166,16 +170,10 @@ fn apply_style(siv: &mut Cursive) {
             .selected_id()
             .expect("Display mode select view appears to be empty"),
     );
-    let ascii_mode = number_to_asciimode(
-        &siv.find_name::<SelectView<usize>>("ascii mode")
-            .expect("Could not find ascii mode select view")
-            .selected_id()
-            .expect("Ascii mode select view appears to be empty"),
-    );
     let new_style = Style {
         mode,
-        ascii_mode,
         ascii_col,
+        bars_col,
         vertical,
         spacer,
         right_to_left,
@@ -375,16 +373,6 @@ fn number_to_stylemode(x: &usize) -> DisplayMode {
     }
 }
 
-fn number_to_asciimode(x: &usize) -> AsciiMode {
-    match x {
-        0 => AsciiMode::Ascii,
-        1 => AsciiMode::Blocks,
-        otherwise => panic!(
-            "Unknown item number {} for style asciimode setting",
-            otherwise
-        ),
-    }
-}
 pub fn style(siv: &mut Cursive) -> impl View {
     let on_quit = |s: &mut Cursive| {
         let old_style = s
@@ -407,80 +395,72 @@ pub fn style(siv: &mut Cursive) -> impl View {
     // * vertical split
     // * hex spacers
     // * right to left mode
-    let left_side = LinearLayout::vertical()
+    let left_side = ListView::new()
         .child(
-            ListView::new()
-                .child(
-                    "Vertical Split:",
-                    Checkbox::new()
-                        .with_checked(style_settings.vertical)
-                        .on_change(|s, check| {
-                            on_hexview(
-                                s,
-                                move |v| v.dh.style.vertical = check,
-                                move |v| v.dh.style.vertical = check,
-                            )
-                        })
-                        .with_name("vertical"),
-                )
-                .child(
-                    "Hex Spacer:",
-                    Checkbox::new()
-                        .with_checked(style_settings.spacer)
-                        .on_change(|s, check| {
-                            on_hexview(
-                                s,
-                                move |v| v.dh.style.spacer = check,
-                                move |v| v.dh.style.spacer = check,
-                            )
-                        })
-                        .with_name("spacer"),
-                )
-                .child(
-                    "Right to Left:",
-                    Checkbox::new()
-                        .with_checked(style_settings.right_to_left)
-                        .on_change(|s, check| {
-                            on_hexview(
-                                s,
-                                move |v| v.dh.style.right_to_left = check,
-                                move |v| v.dh.style.right_to_left = check,
-                            )
-                        })
-                        .with_name("right_to_left"),
-                )
-                .child(
-                    "Ascii Column:",
-                    Checkbox::new()
-                        .with_checked(style_settings.ascii_col)
-                        .on_change(|s, check| {
-                            on_hexview(
-                                s,
-                                move |v| v.dh.style.ascii_col = check,
-                                move |v| v.dh.style.ascii_col = check,
-                            );
-                            s.call_on_name("ascii mode", |v: &mut SelectView<usize>| {
-                                v.set_enabled(check)
-                            });
-                        })
-                        .with_name("ascii_col"),
-                )
-        )
-        .child(Panel::new(
-            SelectView::new()
-                .with_all([("Ascii", 0usize), ("Blocks", 1)])
-                .selected(style_settings.ascii_mode as usize)
-                .on_select(|s, t| {
-                    let mode = number_to_asciimode(t);
+            "Vertical Split:",
+            Checkbox::new()
+                .with_checked(style_settings.vertical)
+                .on_change(|s, check| {
                     on_hexview(
                         s,
-                        move |v| v.dh.style.ascii_mode = mode,
-                        move |v| v.dh.style.ascii_mode = mode,
+                        move |v| v.dh.style.vertical = check,
+                        move |v| v.dh.style.vertical = check,
+                    )
+                })
+                .with_name("vertical"),
+        )
+        .child(
+            "Hex Spacer:",
+            Checkbox::new()
+                .with_checked(style_settings.spacer)
+                .on_change(|s, check| {
+                    on_hexview(
+                        s,
+                        move |v| v.dh.style.spacer = check,
+                        move |v| v.dh.style.spacer = check,
+                    )
+                })
+                .with_name("spacer"),
+        )
+        .child(
+            "Right to Left:",
+            Checkbox::new()
+                .with_checked(style_settings.right_to_left)
+                .on_change(|s, check| {
+                    on_hexview(
+                        s,
+                        move |v| v.dh.style.right_to_left = check,
+                        move |v| v.dh.style.right_to_left = check,
+                    )
+                })
+                .with_name("right_to_left"),
+        )
+        .child(
+            "Ascii Column:",
+            Checkbox::new()
+                .with_checked(style_settings.ascii_col)
+                .on_change(|s, check| {
+                    on_hexview(
+                        s,
+                        move |v| v.dh.style.ascii_col = check,
+                        move |v| v.dh.style.ascii_col = check,
                     );
                 })
-                .with_enabled(style_settings.ascii_col)
-                .with_name("ascii mode"),
-        ));
+                .with_name("ascii_col"),
+        )
+        .child(
+            "Bar Column:",
+            Checkbox::new()
+                .with_checked(style_settings.bars_col)
+                .on_change(|s, check| {
+                    on_hexview(
+                        s,
+                        move |v| v.dh.style.bars_col = check,
+                        move |v| v.dh.style.bars_col = check,
+                    );
+                })
+                .with_name("bars_col"),
+        );
     let right_side = SelectView::new()
         .with_all([
             ("Hex", 0usize),

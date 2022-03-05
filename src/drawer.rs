@@ -173,22 +173,6 @@ fn color_from_mixed_bytes(a: Option<ByteData>, b: Option<ByteData>) -> Color {
 
 #[repr(usize)]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum AsciiMode {
-    Ascii,
-    Blocks,
-}
-
-impl AsciiMode {
-    fn disp(&self, h: Option<u8>) -> String {
-        match self {
-            AsciiMode::Ascii => disp_ascii(h),
-            AsciiMode::Blocks => disp_column_blocks(h),
-        }
-    }
-}
-
-#[repr(usize)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum DisplayMode {
     Hex = 0,
     Binary = 1,
@@ -291,10 +275,16 @@ impl DoubleHexLine {
         if style.right_to_left {
             printer.append_text(&disp_addr(address), Color::Unimportant, Effect::None);
         }
-        if style.ascii_col {
+        for col_disp in [
+            (style.ascii_col, disp_ascii as fn(_) -> _),
+            (style.bars_col, disp_column_blocks),
+        ]
+        .iter()
+        .filter_map(|(c, d)| c.then(|| d))
+        {
             printer.append_text(MIDDLE_PAD, Color::Unimportant, Effect::None);
             for (a, b) in &bytes {
-                let s = style.ascii_mode.disp(byte(*a));
+                let s = col_disp(byte(*a));
                 let color = style.mode.color(*a, *b, line);
                 let effect = byte_effect(*a);
                 printer.append_text(&s, color, effect);
@@ -549,8 +539,8 @@ impl Move {
 #[serde(default)]
 pub struct Style {
     pub mode: DisplayMode,
-    pub ascii_mode: AsciiMode,
     pub ascii_col: bool,
+    pub bars_col: bool,
     pub vertical: bool,
     pub spacer: bool,
     pub right_to_left: bool,
@@ -558,7 +548,7 @@ pub struct Style {
 
 impl Style {
     fn size_per_byte(&self) -> usize {
-        self.mode.size_per_byte() + self.ascii_col as usize
+        self.mode.size_per_byte() + self.ascii_col as usize + self.bars_col as usize
     }
     /// width of n columns
     ///
@@ -575,15 +565,50 @@ impl Style {
                 0
             }
     }
+    /// width of one ascii column
+    pub fn ascii_width(&self, n: usize) -> usize {
+        if self.ascii_col {
+            MIDDLE_PAD.width() + n
+        } else {
+            0
+        }
+    }
+    /// physical column of the start of the ascii column, if it exists
+    pub fn ascii_start(&self, n: usize) -> Option<usize> {
+        if self.ascii_col {
+            Some(ADDR_SIZE + FRONT_PAD.width() + self.n_column_width(n) + MIDDLE_PAD.width())
+        } else {
+            None
+        }
+    }
+    /// width of one bars column
+    pub fn bars_width(&self, n: usize) -> usize {
+        if self.bars_col {
+            MIDDLE_PAD.width() + n
+        } else {
+            0
+        }
+    }
+    /// physical column of the start of the bars column, if it exists
+    pub fn bars_start(&self, n: usize) -> Option<usize> {
+        if self.bars_col {
+            Some(
+                ADDR_SIZE
+                    + FRONT_PAD.width()
+                    + self.n_column_width(n)
+                    + self.ascii_width(n)
+                    + MIDDLE_PAD.width(),
+            )
+        } else {
+            None
+        }
+    }
     /// width of one of the two hex screens
     pub fn half_width(&self, n: usize) -> usize {
         ADDR_SIZE
             + FRONT_PAD.width()
-            + if self.ascii_col {
-                MIDDLE_PAD.width() + n
-            } else {
-                0
-            }
+            + self.ascii_width(n)
+            + self.bars_width(n)
             + self.n_column_width(n)
     }
     /// the position of the first character of the nth hex column
@@ -601,7 +626,8 @@ impl Style {
                 MIDDLE_PAD.width()
             } else {
                 0
-            };
+            }
+            + if self.bars_col { MIDDLE_PAD.width() } else { 0 };
         if self.vertical {
             single_overhead
         } else {
@@ -647,8 +673,8 @@ impl Default for Style {
     fn default() -> Self {
         Style {
             mode: DisplayMode::Hex,
-            ascii_mode: AsciiMode::Ascii,
             ascii_col: false,
+            bars_col: false,
             vertical: false,
             spacer: false,
             right_to_left: false,
@@ -707,61 +733,59 @@ impl DoubleHexContext {
             }
         }
     }
-
-    /// returns the position of the first cursor on the hex view
-    fn first_cursor(&self) -> (usize, usize) {
-        let col = if self.style.right_to_left {
+    /// returns the logical column of the cursor
+    fn col(&self) -> usize {
+        if self.style.right_to_left {
             self.cursor.get_size_x() - 1 - self.cursor.get_x()
         } else {
             self.cursor.get_x()
-        };
-        let ret_x = self.style.nth_column_pos(col);
+        }
+    }
+    /// returns the position of the first cursor on the hex view
+    fn first_cursor(&self) -> (usize, usize) {
+        let ret_x = self.style.nth_column_pos(self.col());
         let ret_y = self.cursor.get_y() + 1;
         (ret_x, ret_y)
     }
 
     /// returns the position of the first cursor on the ascii view
     fn first_cursor_ascii(&self) -> Option<(usize, usize)> {
-        if !self.style.ascii_col {
-            return None;
-        }
-        let col = if self.style.right_to_left {
-            self.cursor.get_size_x() - 1 - self.cursor.get_x()
-        } else {
-            self.cursor.get_x()
-        };
-        let ret_x = FRONT_PAD.width()
-            + ADDR_SIZE
-            + MIDDLE_PAD.width()
-            + self.style.n_column_width(self.cursor.get_size_x())
-            + col;
+        let pos = self.style.ascii_start(self.cursor.get_size_x())?;
+        let ret_x = pos + self.col();
         let ret_y = self.cursor.get_y() + 1;
         Some((ret_x, ret_y))
     }
+    /// returns the position of the first cursor on the bars view
+    fn first_cursor_bars(&self) -> Option<(usize, usize)> {
+        let pos = self.style.bars_start(self.cursor.get_size_x())?;
+        let ret_x = pos + self.col();
+        let ret_y = self.cursor.get_y() + 1;
+        Some((ret_x, ret_y))
+    }
+    /// converts a position in the first half into one of the second half
+    fn shift_to_second(&self, pos: (usize, usize)) -> (usize, usize) {
+        if self.style.vertical {
+            (pos.0, pos.1 + self.vert_half_height())
+        } else {
+            (pos.0 + self.hor_half_width() + MIDDLE_PAD.width(), pos.1)
+        }
+    }
     /// returns the position of the second cursor on the hex view
     fn second_cursor(&self) -> (usize, usize) {
-        let (first_x, first_y) = self.first_cursor();
-        if self.style.vertical {
-            (first_x, first_y + self.vert_half_height())
-        } else {
-            (
-                first_x + self.hor_half_width() + MIDDLE_PAD.width(),
-                first_y,
-            )
-        }
+        let first = self.first_cursor();
+        self.shift_to_second(first)
     }
 
     /// returns the position of the second cursor on the ascii view
     fn second_cursor_ascii(&self) -> Option<(usize, usize)> {
-        let (first_x, first_y) = self.first_cursor_ascii()?;
-        if self.style.vertical {
-            Some((first_x, first_y + self.vert_half_height()))
-        } else {
-            Some((
-                first_x + self.hor_half_width() + MIDDLE_PAD.width(),
-                first_y,
-            ))
-        }
+        let first = self.first_cursor_ascii()?;
+        Some(self.shift_to_second(first))
+    }
+
+    /// returns the position of the second cursor on the bars view
+    fn second_cursor_bars(&self) -> Option<(usize, usize)> {
+        let first = self.first_cursor_bars()?;
+        Some(self.shift_to_second(first))
     }
 
     /// Scrolls the hex view and rewrites the missing content, which should be more efficient
@@ -836,29 +860,35 @@ impl DoubleHexContext {
         backend.set_pos(first_x, first_y);
         // we cut of the last byte of the disp_hex so that the space is not reverse video'd
         backend.append_text(&first_text, first_color, first_effect);
-        if let Some((fx, fy)) = self.first_cursor_ascii() {
+        // first ascii and bars column
+        for (fx, fy, disp_col) in [
+            (self.first_cursor_ascii(), disp_ascii as fn(_) -> _),
+            (self.first_cursor_bars(), disp_column_blocks),
+        ]
+        .iter()
+        .filter_map(|(a, b)| a.map(|(a0, a1)| (a0, a1, b)))
+        {
             backend.set_pos(fx, fy);
-            backend.append_text(
-                &self.style.ascii_mode.disp(byte(at_cursor.0)),
-                first_color,
-                first_effect,
-            );
+            backend.append_text(&disp_col(byte(at_cursor.0)), first_color, first_effect);
         }
 
-        // right cursor
+        // second cursor
         let (second_x, second_y) = self.second_cursor();
         let second_effect = effect(active.is_second(), at_cursor.1);
         let second_color = self.style.mode.color(at_cursor.1, at_cursor.0, second_y);
         let second_text = self.style.mode.disp(byte(at_cursor.1), true);
         backend.set_pos(second_x, second_y);
         backend.append_text(&second_text, second_color, second_effect);
-        if let Some((sx, sy)) = self.second_cursor_ascii() {
+        // second ascii and bars column
+        for (sx, sy, disp_col) in [
+            (self.second_cursor_ascii(), disp_ascii as fn(_) -> _),
+            (self.second_cursor_bars(), disp_column_blocks),
+        ]
+        .iter()
+        .filter_map(|(a, b)| a.map(|(a0, a1)| (a0, a1, b)))
+        {
             backend.set_pos(sx, sy);
-            backend.append_text(
-                &self.style.ascii_mode.disp(byte(at_cursor.1)),
-                second_color,
-                second_effect,
-            );
+            backend.append_text(&disp_col(byte(at_cursor.1)), second_color, second_effect);
         }
 
         // status bar address
