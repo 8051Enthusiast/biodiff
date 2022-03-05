@@ -1,3 +1,9 @@
+1.0.1 (2022-03-05)
+==================
+* Fix hexagex bugs
+* Document alternate shortcuts
+* Add bar diagram display
+
 1.0.0 (2022-02-09)
 ==================
 * Skip blocks for alignment when they are the same

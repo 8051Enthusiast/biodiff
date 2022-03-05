@@ -1,0 +1,4 @@
+0.1.1 (2022-03-05)
+==================
+* fix class difference not working
+* fix empty classes not being properly handled
