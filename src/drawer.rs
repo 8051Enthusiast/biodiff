@@ -973,7 +973,7 @@ impl DoubleHexContext {
         addresses: (Option<usize>, Option<usize>),
     ) {
         const BOTTOM_TEXT: &str =
-            "F1: Help     F2: Unalign   F3: Align    F4: Settings F6: Goto     F7: Search ";
+            "F1/1: Help   F2: Unalign  F3: Align    F4: Settings F6: Goto     F7: Search ";
         let print_addr = disp_bottom_addr(addresses);
         let info_width = self.full_width().saturating_sub(print_addr.chars().count());
         let bottom_text = BOTTOM_TEXT.chars().take(info_width).collect::<String>();

@@ -20,7 +20,7 @@ Usage
 -----
 Execute `biodiff file_a file_b` in a terminal and you should be dropped into a hex view showing two files side by side.
 Initially, the files will not be aligned and displayed without gaps on each side.
-By moving the cursor and views to a place where the left side and right side are similar and pressing `F3`, they can be aligned.
+By moving the cursor and views to a place where the left side and right side are similar and pressing `F3` (or `3`), they can be aligned.
 This is done block by block in standard configuration, which means that bytes near the cursor are aligned first and the other displayed later.
 
 It is also possible to do global and local alignment (of the whole files at once) by changing the settings using `F4` (be sure to consult the help on the parameters).

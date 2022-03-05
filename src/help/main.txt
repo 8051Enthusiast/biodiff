@@ -10,12 +10,12 @@ Keys:
                         primary/both/secondary view
  * 'o' (Unaligned View): set offset between unaligned files
  * space: Jump to the next difference (but at least half a page)
- * F1: View Help
- * F2: View Unaligned
- * F3: View Aligned
- * F4: Alignment Algorithm Settings
- * F6: Go to address
- * F7: Search
+ * F1 or 1: View Help
+ * F2 or 2: View Unaligned
+ * F3 or 3: View Aligned
+ * F4 or 4: Alignment Algorithm Settings
+ * F6 or 6: Go to address
+ * F7 or 7: Search
  * 'n': Jump to next search result
  * 'N': Jump to previous search result
  * Home: Jump to first address
@@ -25,7 +25,7 @@ Unaligned View
 --------------
 This is the binary diff view that just shows both files contiguously
 and is the mode that the viewer starts in. You can align at the
-cursor by pressing F3 and go into the Aligned View.
+cursor by pressing F3 (or 3) and go into the Aligned View.
 
 The primary view is the one on the left or top side (depending on
 display settings), and the secondary view is the one on the right
