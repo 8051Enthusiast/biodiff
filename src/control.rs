@@ -262,10 +262,8 @@ fn peel_onion<V: View>(siv: &mut Cursive) -> Option<V> {
         .remove_layer(LayerPosition::FromBack(0))
         .downcast::<ResizedView<NamedView<V>>>()
         .ok()
-        .map(|view| view.into_inner().ok())
-        .flatten()
-        .map(|view| view.into_inner().ok())
-        .flatten()
+        .and_then(|view| view.into_inner().ok())
+        .and_then(|view| view.into_inner().ok())
 }
 
 /// Default Cursive theme except that the background color is black

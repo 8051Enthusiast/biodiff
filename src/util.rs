@@ -116,13 +116,16 @@ pub fn entropy(data: &[u8]) -> f32 {
     for byte in data {
         counts[usize::from(*byte)] += 1;
     }
-    counts.into_iter().map(|x| {
-        if x == 0 {
-            return 0.0f32
-        };
-        let freq = x as f32 / data.len() as f32;
-        -freq * freq.log2() / 8.0
-    }).sum::<f32>()
+    counts
+        .into_iter()
+        .map(|x| {
+            if x == 0 {
+                return 0.0f32;
+            };
+            let freq = x as f32 / data.len() as f32;
+            -freq * freq.log2() / 8.0
+        })
+        .sum::<f32>()
 }
 
 #[cfg(test)]
