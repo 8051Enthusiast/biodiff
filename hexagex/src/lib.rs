@@ -235,7 +235,7 @@ impl TryFrom<&ast::ClassSetItem> for PartialElement {
 
     fn try_from(value: &ast::ClassSetItem) -> Result<Self, Self::Error> {
         match value {
-            ast::ClassSetItem::Empty(span) => Ok(PartialElement::empty(Some(*span))),
+            ast::ClassSetItem::Empty(span) => Err(InternalError::EmptyClass(*span)),
             // in classes, text escapes are not allowed since that would make stuff complicated
             // and you can get pretty much the same functionality by just putting the \t before
             // the bracket
@@ -270,7 +270,7 @@ impl TryFrom<&ast::Literal> for PartialElement {
         let (val, len) = match value.kind {
             // ignore whitespace
             ast::LiteralKind::Verbatim if [' ', '\t', '\n'].contains(&value.c) => {
-                return Ok(PartialElement::empty(Some(value.span)))
+                return Ok(PartialElement::zerolen(Some(value.span)))
             }
             ast::LiteralKind::Verbatim
             | ast::LiteralKind::Punctuation
@@ -379,7 +379,7 @@ impl TryFrom<&ast::ClassSetUnion> for PartialElement {
     fn try_from(value: &ast::ClassSetUnion) -> Result<Self, Self::Error> {
         let mut result: PartialElement = match value.items.get(0) {
             Some(x) => x.try_into()?,
-            None => return Ok(PartialElement::empty(Some(value.span))),
+            None => return Ok(PartialElement::zerolen(Some(value.span))),
         };
         for item in &value.items[1..] {
             let conv: PartialElement = item.try_into()?;
@@ -408,7 +408,7 @@ impl TryFrom<PartialSequence> for Ast {
         };
         // the current byte batch
         // we add it to the ast each time get get a full 8 bits
-        let mut current_byte_values = PartialElement::empty(None);
+        let mut current_byte_values = PartialElement::zerolen(None);
         for element in value.elements {
             let element = match element {
                 Either::Left(partial) => partial,
@@ -417,7 +417,7 @@ impl TryFrom<PartialSequence> for Ast {
                     // we must ensure that we have a multiple of 8 bits before it
                     if current_byte_values.length > 0 {
                         ast.asts.push(current_byte_values.try_into()?);
-                        current_byte_values = PartialElement::empty(Some(Span::new(
+                        current_byte_values = PartialElement::zerolen(Some(Span::new(
                             astpart.span().end,
                             astpart.span().end,
                         )));
@@ -426,6 +426,9 @@ impl TryFrom<PartialSequence> for Ast {
                     continue;
                 }
             };
+            if element.values.is_empty() {
+                return Err(InternalError::EmptyClass(element.span.unwrap()));
+            }
             // split at the next byte boundary
             let (new_byte_values, next_byte_values) = element.split(8 - current_byte_values.length);
             current_byte_values = current_byte_values.concat(&new_byte_values);
@@ -492,13 +495,19 @@ impl TryFrom<PartialElement> for Ast {
             }));
         }
         // this is just so the resulting ast is prettier
-        if let [v] = value.values.as_slice() {
-            return Ok(Ast::Literal(ast::Literal {
-                span,
-                kind: ast::LiteralKind::HexFixed(ast::HexLiteralKind::X),
-                c: *v as char,
-            }));
-        }
+        match value.values.as_slice() {
+            [] => {
+                return Err(InternalError::EmptyClass(span));
+            }
+            [v] => {
+                return Ok(Ast::Literal(ast::Literal {
+                    span,
+                    kind: ast::LiteralKind::HexFixed(ast::HexLiteralKind::X),
+                    c: *v as char,
+                }))
+            }
+            _ => (),
+        };
         let mut byte_class = ast::ClassSetUnion {
             span,
             items: Vec::new(),
@@ -702,7 +711,7 @@ impl PartialElement {
         }
     }
     /// value of zero-lenghts with a single value of 0
-    fn empty(span: Option<Span>) -> Self {
+    fn zerolen(span: Option<Span>) -> Self {
         Self {
             length: 0,
             span,
@@ -806,7 +815,7 @@ impl Error {
     fn new(err: InternalError, regex: &str) -> Self {
         let mut ret = String::new();
         match err {
-            InternalError::RegexError(e) => Error::RegexError(e),
+            InternalError::RegexError(e) => return Error::RegexError(e),
             InternalError::AlignmentError(a) => {
                 let _ = writeln!(
                     &mut ret,
@@ -814,7 +823,6 @@ impl Error {
                     a.required, a.is
                 );
                 ret += &write_with_span(regex, a.span);
-                Error::HexagexError(ret)
             }
             InternalError::LengthMismatch(l) => {
                 let _ = writeln!(
@@ -829,7 +837,6 @@ impl Error {
                     l.lengths.1
                 );
                 ret += &write_with_span(regex, l.spans.1);
-                Error::HexagexError(ret)
             }
             InternalError::Unicode(span) => {
                 let _ = writeln!(
@@ -837,18 +844,15 @@ impl Error {
                     "hexagex error: unicode is not supported; offending part:"
                 );
                 ret += &write_with_span(regex, span);
-                Error::HexagexError(ret)
             }
             InternalError::InvalidCharacter(span) => {
                 let _ = writeln!(&mut ret, "hexagex error: invalid character here:");
                 ret += &write_with_span(regex, span);
                 let _ = write!(&mut ret, "\nNote: use 0-9a-f and . (wildcard) for hexadecimal parts with 4 bits lengths\nI and O and _ (wildcard) for bits and \\x00-\\xff for bytes");
-                Error::HexagexError(ret)
             }
             InternalError::IncompleteEscape(span) => {
                 let _ = writeln!(&mut ret, "hexagex error: incomplete escape:");
                 ret += &write_with_span(regex, span);
-                Error::HexagexError(ret)
             }
             InternalError::InvalidEscapePosition(span) => {
                 let _ = writeln!(
@@ -857,9 +861,13 @@ impl Error {
                 );
                 ret += &write_with_span(regex, span);
                 let _ = write!(&mut ret, "\nNote: if you want to have text characters in braces, place the \\t before it");
-                Error::HexagexError(ret)
+            }
+            InternalError::EmptyClass(span) => {
+                let _ = writeln!(&mut ret, "hexagex error: empty classes are not allowed");
+                ret += &write_with_span(regex, span);
             }
         }
+        Error::HexagexError(ret)
     }
 }
 
@@ -879,6 +887,8 @@ enum InternalError {
     IncompleteEscape(Span),
     /// when \t is inside a class
     InvalidEscapePosition(Span),
+    /// when for example [a--a][a--a] is empty
+    EmptyClass(Span),
 }
 
 impl From<regex_syntax::ast::Error> for InternalError {
@@ -956,7 +966,7 @@ mod tests {
     }
     /// test whether the given regex matches the underlined ranges and only them
     fn test_matches(regex: &str, hexcontent: &str, underlined: &str) {
-        //println!("{}", hexagex(regex).unwrap().to_string());
+        println!("converted: \"{}\"", hexagex(regex).unwrap().to_string());
         let content = h(hexcontent);
         let mut matches = matches(regex, &content).into_iter();
         for range in get_underline_ranges(underlined).into_iter() {
