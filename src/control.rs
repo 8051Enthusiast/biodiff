@@ -63,14 +63,19 @@ pub struct Settings {
 
 impl Settings {
     fn config_path() -> Result<PathBuf, std::io::Error> {
-        let mut path = config_dir().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "Could not find configuration directory",
-            )
-        })?;
-        path.push("biodiff");
-        Ok(path)
+        match std::env::var_os("BIODIFF_CONFIG_DIR") {
+            Some(p) => Ok(PathBuf::from(p)),
+            None => match config_dir() {
+                Some(mut p) => {
+                    p.push("biodiff");
+                    Ok(p)
+                }
+                None => Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Could not find configuration directory",
+                )),
+            },
+        }
     }
     fn settings_file() -> Result<PathBuf, std::io::Error> {
         let mut path = Self::config_path()?;
@@ -84,7 +89,7 @@ impl Settings {
 
     pub fn save_config(&self) -> Result<(), Box<dyn Error + 'static>> {
         let config = serde_json::to_string(self)?;
-        let r = std::fs::create_dir(Self::config_path()?);
+        let r = std::fs::create_dir_all(Self::config_path()?);
         if let Err(ref e) = r {
             match e.kind() {
                 std::io::ErrorKind::AlreadyExists => (),

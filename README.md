@@ -34,6 +34,10 @@ Alternatively, you can also install this using `cargo` by doing `cargo install b
 
 You can also execute directly using code from this repository by executing `cargo run --release -- file_a file_b`.
 
+By default, settings are stored in a [platform-specific user directory](https://github.com/dirs-dev/dirs-rs#Features).
+To use a custom settings directory, set the `BIODIFF_CONFIG_DIR` environment variable to the desired directory path before running `biodiff`.
+If the directory doesn't exist, it will be automatically created.
+
 License
 -------
 This project is licensed under the MIT license.
