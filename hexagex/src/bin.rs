@@ -17,7 +17,11 @@ fn main() {
             }
         };
         for m in regex.find_iter(&content) {
-            println!("{:#04x}: {}", m.start(), hex::encode(m.as_bytes()));
+            print!("{:#04x}: ", m.start());
+            for byte in m.as_bytes() {
+                print!("{:02x}", byte);
+            }
+            println!();
         }
     } else {
         println!("Usage: hexagex [regex] [file]");

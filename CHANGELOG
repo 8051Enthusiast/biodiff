@@ -1,3 +1,9 @@
+1.0.2 (2022-07-22)
+==================
+* Fix hexagex bugs
+* Fix blockwise align mode not showing the rest of the file when the other side of the file is already at the end/beginning
+* Add BIODIFF_CONFIG_DIR env variable to set custom settings directory (MatejKafka)
+
 1.0.1 (2022-03-05)
 ==================
 * Fix hexagex bugs
