@@ -239,9 +239,8 @@ pub fn align_end<F: MatchFunc + Clone>(
         // block boundaries are better detected
         let ops = &end_aligned[0..end_aligned.len().min(block_size / 2)];
         // we will not progress like this, so might as well quit
-        // might indicate an error
         if ops.is_empty() {
-            return;
+            break;
         }
         let (end, new_xaddr, new_yaddr) = AlignElement::from_array(ops, &x, &y, xaddr, yaddr);
         if sender.send(AlignedMessage::Append(end)).is_err() {
@@ -250,6 +249,15 @@ pub fn align_end<F: MatchFunc + Clone>(
         xaddr = new_xaddr;
         yaddr = new_yaddr;
     }
+    let clip = if x.len() == xaddr {
+        Op::Yclip(y.len() - yaddr)
+    } else if y.len() == yaddr {
+        Op::Xclip(x.len() - xaddr)
+    } else {
+        return;
+    };
+    let leftover = AlignElement::from_array(&[clip], &x, &y, xaddr, yaddr).0;
+    let _ = sender.send(AlignedMessage::Append(leftover));
 }
 
 /// Same as align_end, but in the other direction
@@ -279,9 +287,9 @@ pub fn align_front<F: MatchFunc + Clone>(
         // we already know, so we instead take the start addresses from the array itself
         let (end, _, _) = AlignElement::from_array(&aligned, &x, &y, lower_xaddr, lower_yaddr);
         let real_end = Vec::from(&end[end.len().saturating_sub(block_size / 2)..end.len()]);
-        // if this is empty, we will not progress, so just quit
+        // if this is empty, we will not progress, so send the leftover out and quit after that
         if real_end.is_empty() {
-            return;
+            break;
         }
         let first = real_end.first().unwrap();
         xaddr = first.xaddr;
@@ -290,6 +298,15 @@ pub fn align_front<F: MatchFunc + Clone>(
             return;
         }
     }
+    let clip = if xaddr == 0 {
+        Op::Yclip(yaddr)
+    } else if yaddr == 0 {
+        Op::Xclip(xaddr)
+    } else {
+        return;
+    };
+    let leftover = AlignElement::from_array(&[clip], &x, &y, 0, 0).0;
+    let _ = sender.send(AlignedMessage::Prepend(leftover));
 }
 
 pub enum FlatAlignProgressMessage {
