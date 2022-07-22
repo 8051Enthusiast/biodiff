@@ -68,7 +68,7 @@ fn binary_ast_to_maybe_ast(ast: &Ast) -> Result<Either<PartialSequence, Ast>, In
         // literals, dots etc. are collected into partial sequences and not yet into an ast
         Ast::Literal(lit) => Ok(Either::Left(PartialElement::try_from(lit)?.sequence())),
         Ast::Dot(span) => Ok(Either::Left(
-            PartialElement::full(4, Some(*span)).sequence(),
+            PartialElement::full(4, 4, Some(*span)).sequence(),
         )),
         // turn ^ and $ into \A and \z
         Ast::Assertion(a) => match a.kind {
@@ -164,15 +164,17 @@ impl From<&ast::ClassPerl> for PartialElement {
     fn from(pc: &ast::ClassPerl) -> Self {
         let span = pc.span;
         let mut ret = match pc.kind {
-            ast::ClassPerlKind::Digit => PartialElement::from_range(&[b'0'..=b'9'], span, 8),
+            ast::ClassPerlKind::Digit => PartialElement::from_range(&[b'0'..=b'9'], span, 8, 8),
             ast::ClassPerlKind::Space => PartialElement {
                 length: 8,
+                align: 8,
                 span: Some(span),
                 values: vec![b'\t', b'\n', 0x0c, b'\r', b' '],
             },
             ast::ClassPerlKind::Word => PartialElement::from_range(
                 &[b'0'..=b'9', b'a'..=b'z', b'A'..=b'Z', b'_'..=b'_'],
                 span,
+                8,
                 8,
             ),
         };
@@ -282,7 +284,7 @@ impl TryFrom<&ast::Literal> for PartialElement {
                     'I' | 'i' => (1, 1),
                     'O' | 'o' => (0, 1),
                     '_' => {
-                        return Ok(PartialElement::full(1, Some(value.span)));
+                        return Ok(PartialElement::full(1, 1, Some(value.span)));
                     }
                     otherwise => {
                         let x = u8::from_str_radix(&otherwise.to_string(), 16)
@@ -306,6 +308,7 @@ impl TryFrom<&ast::Literal> for PartialElement {
         };
         Ok(PartialElement {
             length: len,
+            align: len,
             span: Some(value.span),
             values: vec![val],
         })
@@ -342,6 +345,7 @@ impl TryFrom<&ast::ClassSetRange> for PartialElement {
             &[*start_val..=*end_val],
             value.span,
             start.length,
+            start.align.max(end.align),
         ))
     }
 }
@@ -365,7 +369,7 @@ impl From<&ast::ClassAscii> for PartialElement {
             ast::ClassAsciiKind::Word => &[b'0'..=b'9', b'A'..=b'Z', b'a'..=b'z', b'_'..=b'_'],
             ast::ClassAsciiKind::Xdigit => &[b'0'..=b'9', b'A'..=b'F', b'a'..=b'f'],
         };
-        let mut ret = PartialElement::from_range(ranges, value.span, 8);
+        let mut ret = PartialElement::from_range(ranges, value.span, 8, 8);
         if value.negated {
             ret = !&ret;
         }
@@ -431,7 +435,7 @@ impl TryFrom<PartialSequence> for Ast {
             }
             // split at the next byte boundary
             let (new_byte_values, next_byte_values) = element.split(8 - current_byte_values.length);
-            current_byte_values = current_byte_values.concat(&new_byte_values);
+            current_byte_values = current_byte_values.concat(&new_byte_values)?;
             if let Some(byte_values) = next_byte_values {
                 ast.asts.push(current_byte_values.try_into()?);
                 current_byte_values = byte_values;
@@ -452,6 +456,7 @@ struct PartialSequence {
 
 #[derive(Debug)]
 struct PartialElement {
+    align: u8,
     /// bit length up to 8
     length: u8,
     span: Option<Span>,
@@ -547,11 +552,7 @@ impl std::ops::Not for &PartialElement {
                 _ => values.push(value),
             }
         }
-        PartialElement {
-            length: self.length,
-            span: self.span,
-            values,
-        }
+        PartialElement { values, ..*self }
     }
 }
 
@@ -592,10 +593,16 @@ impl std::ops::Sub for &PartialElement {
 
 impl PartialElement {
     /// convert a range of values with given bit lengths into a PartialElement
-    fn from_range(ranges: &[std::ops::RangeInclusive<u8>], span: Span, length: u8) -> Self {
+    fn from_range(
+        ranges: &[std::ops::RangeInclusive<u8>],
+        span: Span,
+        length: u8,
+        align: u8,
+    ) -> Self {
         let mut values = Vec::new();
         values.extend(ranges.iter().flat_map(|x| x.clone()));
         Self {
+            align,
             length,
             span: Some(span),
             values,
@@ -631,8 +638,8 @@ impl PartialElement {
         }
         PartialElement {
             length: new_len,
-            span: self.span,
             values: ret,
+            ..*self
         }
     }
     /// extract the part of the element before the boundary
@@ -655,22 +662,7 @@ impl PartialElement {
             length: split_point,
             span: self.span,
             values: ret,
-        }
-    }
-    /// concatenate two elements that have a combined length less than or equal to 8
-    fn concat(&self, rhs: &Self) -> Self {
-        PartialElement {
-            values: self
-                .values
-                .iter()
-                .flat_map(|x| {
-                    rhs.values
-                        .iter()
-                        .map(move |y| ((*x as u16) << rhs.length) as u8 | y)
-                })
-                .collect(),
-            length: self.length + rhs.length,
-            span: combine_spans(self.span, rhs.span),
+            ..*self
         }
     }
     /// Map same-value pairs from two elements together.
@@ -705,22 +697,48 @@ impl PartialElement {
             }
         }
         PartialElement {
-            length: self.length,
-            span: self.span,
             values: ret,
+            ..*self
         }
     }
     /// value of zero-lenghts with a single value of 0
     fn zerolen(span: Option<Span>) -> Self {
         Self {
+            align: 1,
             length: 0,
             span,
             values: vec![0],
         }
     }
+    /// concatenate two elements that have a combined length less than or equal to 8
+    fn concat(&self, rhs: &Self) -> Result<Self, InternalError> {
+        if self.length % rhs.align != 0 {
+            return Err(InternalError::AlignmentError(AlignmentError {
+                is: self.length,
+                required: rhs.align,
+                span: rhs.span.unwrap(),
+            }));
+        }
+        let align = self.align.max(rhs.align);
+        Ok(PartialElement {
+            align,
+            values: self
+                .values
+                .iter()
+                .flat_map(|x| {
+                    rhs.values
+                        .iter()
+                        .map(move |y| ((*x as u16) << rhs.length) as u8 | y)
+                })
+                .collect(),
+            length: self.length + rhs.length,
+            span: combine_spans(self.span, rhs.span),
+        })
+    }
     /// wildcard of given length
-    fn full(len: u8, span: Option<Span>) -> Self {
+    fn full(len: u8, align: u8, span: Option<Span>) -> Self {
         let mut r = Self {
+            align,
             length: len,
             span,
             values: vec![0],
@@ -1072,5 +1090,9 @@ mod tests {
             "48656c6c6f204a6f686e2e2e2e206e6f20776169742c2048656c6c6f20576f726c64210a",
             "                                              ^--------------------$    ",
         )
+    }
+    #[test]
+    fn errors_on_misalign() {
+        assert!(hexagex("III0III0III0III").is_err())
     }
 }
