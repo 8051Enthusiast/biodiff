@@ -1,4 +1,4 @@
-1.0.2 (2022-07-22)
+1.0.3 (2022-07-22)
 ==================
 * Fix hexagex bugs
 * Fix blockwise align mode not showing the rest of the file when the other side of the file is already at the end/beginning
