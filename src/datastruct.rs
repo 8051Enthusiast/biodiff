@@ -146,7 +146,7 @@ impl CompVec {
     }
     /// Returns the possible indexes where the second vector has data
     pub fn second_bound(&self) -> Range<isize> {
-        self.shift..self.shift as isize + self.yvec.len() as isize
+        self.shift..self.shift + self.yvec.len() as isize
     }
     /// Calculates the index of a subsequence (with the current offset)
     /// where the product of entropy and length is the highest
@@ -205,12 +205,12 @@ impl<'a> Iterator for CommonSequenceIterator<'a> {
             .iter()
             .zip(self.b.iter())
             .enumerate()
-            .find_map(|(i, (a, b))| (a == b).then(|| i))?;
+            .find_map(|(i, (a, b))| (a == b).then_some(i))?;
         let next_uncommon_index = self.a[next_common_index..]
             .iter()
             .zip(self.b[next_common_index..].iter())
             .enumerate()
-            .find_map(|(i, (a, b))| (a != b).then(|| i + next_common_index))
+            .find_map(|(i, (a, b))| (a != b).then_some(i + next_common_index))
             .unwrap_or_else(|| self.a.len().min(self.b.len()));
         let ret = &self.a[next_common_index..next_uncommon_index];
         self.a = &self.a[next_uncommon_index..];

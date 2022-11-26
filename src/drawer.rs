@@ -801,7 +801,7 @@ impl DoubleHexContext {
         }
         if !backend.can_scroll()
             || !self.style.mode.can_scroll()
-            || scroll_amount.abs() as usize > content.len()
+            || scroll_amount.unsigned_abs() > content.len()
         {
             return self.print_doublehex_screen(content, backend);
         }

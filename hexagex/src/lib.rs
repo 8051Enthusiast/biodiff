@@ -518,7 +518,7 @@ impl TryFrom<PartialElement> for Ast {
             items: Vec::new(),
         };
         // bunch up into ranges when we get contingent values
-        let mut current_range = match value.values.get(0) {
+        let mut current_range = match value.values.first() {
             None => return Ok(Ast::Empty(span)),
             Some(a) => (*a, *a),
         };

@@ -1,5 +1,4 @@
-mod lib;
-use lib::hexagex;
+use hexagex::hexagex;
 fn main() {
     if let [_, regex, file] = &std::env::args().collect::<Vec<_>>()[..] {
         let content = match std::fs::read(file) {
