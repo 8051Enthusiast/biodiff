@@ -66,7 +66,7 @@ where
         .expect("Could not find textbox")
     {
         Ok(x) => *val = x,
-        Err(e) => err.push_str(&format!("{} is invalid: {}\n", name, e)),
+        Err(e) => err.push_str(&format!("{name} is invalid: {e}\n")),
     }
 }
 
@@ -125,7 +125,7 @@ fn apply_algorithm(siv: &mut Cursive) {
 
     if !errors.is_empty() {
         siv.add_layer(
-            Dialog::text(format!("Error(s) occured:\n{}", errors))
+            Dialog::text(format!("Error(s) occured:\n{errors}"))
                 .title("Error reading algorithm configuration")
                 .button("Continue", close_top_maybe_quit),
         );
@@ -371,10 +371,7 @@ fn number_to_stylemode(x: &usize) -> DisplayMode {
         4 => DisplayMode::HexAsciiMix,
         5 => DisplayMode::Braille,
         6 => DisplayMode::Roman,
-        otherwise => panic!(
-            "Unknown item number {} for style displaymode setting",
-            otherwise
-        ),
+        otherwise => panic!("Unknown item number {otherwise} for style displaymode setting"),
     }
 }
 
@@ -507,7 +504,7 @@ fn save_settings(siv: &mut Cursive) {
         .expect("Could not get settings from cursive");
     if let Err(e) = settings.save_config() {
         siv.add_layer(
-            Dialog::text(format!("Could not save config: {}", e))
+            Dialog::text(format!("Could not save config: {e}"))
                 .button("Close", close_top_maybe_quit)
                 .title("Error saving config"),
         )
@@ -541,7 +538,7 @@ pub fn settings(siv: &mut Cursive) {
                                 let v = style(s);
                                 s.add_layer(v)
                             }
-                            otherwise => panic!("Unknown setting selection index: {}", otherwise),
+                            otherwise => panic!("Unknown setting selection index: {otherwise}"),
                         }),
                 ),
         )
@@ -573,7 +570,7 @@ pub fn goto(siv: &mut Cursive) {
 
         match result {
             Err(e) => s.add_layer(
-                Dialog::text(format!("Error in search: {}", e))
+                Dialog::text(format!("Error in search: {e}"))
                     .button("Continue", close_top_maybe_quit),
             ),
             Ok(()) => close_top_maybe_quit(s),
@@ -680,7 +677,7 @@ fn on_search(siv: &mut Cursive) -> Result<(), String> {
         "text" => QueryType::Text,
         "regex" => QueryType::Regex,
         "hexagex" => QueryType::Hexagex,
-        otherwise => return Err(format!("Invaild search mode: {}", otherwise)),
+        otherwise => return Err(format!("Invaild search mode: {otherwise}")),
     };
     let query = Query::new(query_type, &content).map_err(|e| e.to_string())?;
     let q1 = query.clone();

@@ -133,7 +133,7 @@ mod tests {
     use super::entropy;
     #[test]
     fn ent() {
-        let all = (0..=255u8).into_iter().collect::<Vec<u8>>();
+        let all = (0..=255u8).collect::<Vec<u8>>();
         assert!((entropy(&all) - 1.0).abs() < 0.001);
         let none = vec![0u8; 256];
         assert!(entropy(&none).abs() < 0.001);

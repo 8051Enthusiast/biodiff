@@ -57,7 +57,9 @@ impl TryFrom<Event> for Action {
                 Event::Resize(_, _) => return Ok(Action::Refresh),
                 // ignore modifiers for now
                 Event::Key(x) => x.code,
-                Event::Mouse(_) | Event::FocusGained | Event::FocusLost | Event::Paste(_) => return Err(()),
+                Event::Mouse(_) | Event::FocusGained | Event::FocusLost | Event::Paste(_) => {
+                    return Err(())
+                }
             } {
                 KeyCode::Up => Action::Up,
                 KeyCode::Down => Action::Down,
@@ -269,7 +271,7 @@ pub fn quit_with_error<E: std::error::Error, Out>(premsg: &'static str) -> impl 
     move |err| {
         let tmp = Cross::new_uninit();
         tmp.uninit();
-        eprintln!("{}: {}", premsg, err);
+        eprintln!("{premsg}: {err}");
         std::process::exit(1)
     }
 }

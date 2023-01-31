@@ -112,7 +112,7 @@ impl AlignAlgorithm {
                 // Clone the data for the second thread here
                 let x_cp = x.clone();
                 let y_cp = y.clone();
-                let scorer_cp = scorer.clone();
+                let scorer_cp = scorer;
                 let band_cp = band.clone();
                 let sender_cp = sender.clone();
                 std::thread::spawn(move || align_end(x, y, addr, scorer, band, blocksize, sender));

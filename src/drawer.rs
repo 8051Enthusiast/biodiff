@@ -34,7 +34,7 @@ fn disp_addr(maddr: Option<usize>) -> String {
         Some(addr) => {
             let lo = addr & 0xffff;
             let hi = (addr >> 16) & 0xffff;
-            format!("{:04x} {:04x} ", hi, lo)
+            format!("{hi:04x} {lo:04x} ")
         }
         None => String::from("          "),
     }
@@ -43,7 +43,7 @@ fn disp_addr(maddr: Option<usize>) -> String {
 /// Formats the addresses that get displayed on the lower right of the screen
 fn disp_bottom_addr(addresses: (Option<usize>, Option<usize>)) -> String {
     let formatted = |addr: Option<usize>| {
-        addr.map(|x| format!("{:08x}", x))
+        addr.map(|x| format!("{x:08x}"))
             .unwrap_or_else(|| String::from("        "))
     };
     format!(" {}|{} ", formatted(addresses.0), formatted(addresses.1))
@@ -52,28 +52,28 @@ fn disp_bottom_addr(addresses: (Option<usize>, Option<usize>)) -> String {
 /// Contains two hex digits of a byte and a space behind it, or just three spaces for None
 fn disp_hex(h: Option<u8>) -> String {
     match h {
-        Some(hex) => format!("{:02x} ", hex),
+        Some(hex) => format!("{hex:02x} "),
         None => String::from("   "),
     }
 }
 
 fn disp_binary(h: Option<u8>) -> String {
     match h {
-        Some(bin) => format!("{:08b} ", bin),
+        Some(bin) => format!("{bin:08b} "),
         None => String::from("         "),
     }
 }
 
 fn disp_octal(h: Option<u8>) -> String {
     match h {
-        Some(bin) => format!("{:03o} ", bin),
+        Some(bin) => format!("{bin:03o} "),
         None => String::from("    "),
     }
 }
 
 fn disp_decimal(h: Option<u8>) -> String {
     match h {
-        Some(bin) => format!("{:>3} ", bin),
+        Some(bin) => format!("{bin:>3} "),
         None => String::from("    "),
     }
 }
@@ -85,7 +85,7 @@ fn disp_braille(h: Option<u8>) -> String {
             let reordered_byte = rbyte & 0x87 | rbyte >> 1 & 0x38 | rbyte << 3 & 0x40;
             let braille_char = char::from_u32(0x2800u32 + reordered_byte as u32)
                 .expect("Could not convert to braille codepoint");
-            format!("│{}", braille_char)
+            format!("│{braille_char}")
         }
         None => String::from("  "),
     }
@@ -98,7 +98,7 @@ fn disp_mixed(h: Option<u8>) -> String {
         Some(b'\n') => String::from("\\n "),
         Some(b'\t') => String::from("\\t "),
         Some(b'\r') => String::from("\\r "),
-        Some(c) => format!("{:02x} ", c),
+        Some(c) => format!("{c:02x} "),
         None => String::from("   "),
     }
 }
@@ -137,7 +137,7 @@ fn disp_roman(h: Option<u8>) -> String {
         }
         None => String::new(),
     };
-    format!("{:>9} ", s)
+    format!("{s:>9} ")
 }
 
 fn byte_effect(x: Option<ByteData>) -> Effect {
@@ -172,8 +172,9 @@ fn color_from_mixed_bytes(a: Option<ByteData>, b: Option<ByteData>) -> Color {
 }
 
 #[repr(usize)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub enum DisplayMode {
+    #[default]
     Hex = 0,
     Binary = 1,
     Decimal = 2,
@@ -181,12 +182,6 @@ pub enum DisplayMode {
     HexAsciiMix = 4,
     Braille = 5,
     Roman = 6,
-}
-
-impl Default for DisplayMode {
-    fn default() -> Self {
-        DisplayMode::Hex
-    }
 }
 
 impl DisplayMode {
@@ -937,21 +932,9 @@ impl DoubleHexContext {
         let hexsize = self.hor_half_width() - ADDR_SIZE - 2;
         let format_title = |text| {
             if self.style.right_to_left {
-                format!(
-                    "{:<hexsize$} {:addrsize$} ",
-                    text,
-                    short_title,
-                    addrsize = addrsize,
-                    hexsize = hexsize
-                )
+                format!("{text:<hexsize$} {short_title:addrsize$} ")
             } else {
-                format!(
-                    "{:addrsize$} {:>hexsize$} ",
-                    short_title,
-                    text,
-                    addrsize = addrsize,
-                    hexsize = hexsize
-                )
+                format!("{short_title:addrsize$} {text:>hexsize$} ")
             }
         };
         let first_title = format_title(short_first);
@@ -978,19 +961,9 @@ impl DoubleHexContext {
         let info_width = self.full_width().saturating_sub(print_addr.chars().count());
         let bottom_text = BOTTOM_TEXT.chars().take(info_width).collect::<String>();
         let info_text = if self.style.right_to_left {
-            format!(
-                "{}{:>info_width$}",
-                print_addr,
-                bottom_text,
-                info_width = info_width
-            )
+            format!("{print_addr}{bottom_text:>info_width$}")
         } else {
-            format!(
-                "{:<info_width$}{}",
-                bottom_text,
-                print_addr,
-                info_width = info_width
-            )
+            format!("{bottom_text:<info_width$}{print_addr}")
         };
         let line = self.full_height() - 1;
         printer.set_line(line);

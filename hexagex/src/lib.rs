@@ -788,7 +788,7 @@ impl std::fmt::Display for Error {
         let s = match self {
             Error::RegexError(s) | Error::HexagexError(s) => s,
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -800,7 +800,7 @@ fn write_with_span(regex: &str, span: Span) -> String {
     let lines = regex.lines().collect::<Vec<_>>();
     let line_number = lines.len();
     for (i, line) in lines.into_iter().enumerate() {
-        let _ = writeln!(&mut out, "{}", line);
+        let _ = writeln!(&mut out, "{line}");
         let i = i + 1;
         if span.start.line <= i && span.end.line >= i {
             let start = if span.start.line == i {
@@ -949,7 +949,7 @@ mod tests {
     fn matches<'a>(expr: &str, content: &'a [u8]) -> Vec<regex::bytes::Match<'a>> {
         hexagex(expr)
             .unwrap()
-            .find_iter(&content)
+            .find_iter(content)
             .collect::<Vec<_>>()
     }
     /// turns an underline string that looks somewhat like "  ^----$  " into the ranges
@@ -977,20 +977,20 @@ mod tests {
                 ('$', None) => panic!("Underline finished without starting one"),
                 ('-', None) => panic!("Underline continued without starting one"),
                 (' ', Some(_)) => panic!("Underline ended without $"),
-                (x, _) => panic!("Unknown underline character '{}'", x),
+                (x, _) => panic!("Unknown underline character '{x}'"),
             }
         }
         ranges
     }
     /// test whether the given regex matches the underlined ranges and only them
     fn test_matches(regex: &str, hexcontent: &str, underlined: &str) {
-        println!("converted: \"{}\"", hexagex(regex).unwrap().to_string());
+        println!("converted: \"{}\"", hexagex(regex).unwrap());
         let content = h(hexcontent);
         let mut matches = matches(regex, &content).into_iter();
         for range in get_underline_ranges(underlined).into_iter() {
             let m = matches
                 .next()
-                .expect(&format!("Missing match at {:?}", range));
+                .unwrap_or_else(|| panic!("Missing match at {range:?}"));
             assert_eq!(
                 m.range(),
                 range,
