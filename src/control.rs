@@ -45,6 +45,12 @@ pub fn run(x: FileState, y: FileState) {
         let (hv_new, quit) = hv.process_cross(&mut cross, &settings);
         hv = hv_new;
         cross.uninit();
+        // the column setting can be changed during the non-dialog,
+        // so we need to keep it updated here
+        settings.style = match &hv {
+            HexView::Aligned(v, _, _) => v.dh.style,
+            HexView::Unaligned(v) => v.dh.style,
+        };
         let (hv_new, settings_new) = match quit {
             DelegateEvent::Quit => break,
             DelegateEvent::OpenDialog(dia) => hv.show_dialog(dia, settings),

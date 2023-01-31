@@ -5,12 +5,6 @@ This window allows setting the way the binary is displayed.
 While the settings are previewed directly, pressing Cancel
 resets them to their previous state.
 
-Ascii Column
-------------
-Adds a column alongside the usual hex view which shows the
-byte values as characters if they are in the ASCII range,
-and else displays them as dots.
-
 Vertical Split
 --------------
 Normally, the primary file is shown on the left and the secondary
@@ -28,6 +22,25 @@ Instead of increasing the address from left to right, the opposite
 is the case. This can be more natural for little-endian values,
 since this mode shows them in the way that is consistent with
 the order of the nibbles inside of the hex values.
+
+Ascii Column
+------------
+Adds a column alongside the usual hex view which shows the
+byte values as characters if they are in the ASCII range,
+and else displays them as dots.
+
+Bar Column
+----------
+Adds a column alongside the usual hex view which shows the
+byte values as bars. The height of the bar is proportional
+to the value of the byte.
+
+Column Count
+------------
+Sets the number of hex columns. If there are more columns than
+would fit on the screen, the rows are cut off so that the higher
+addresses are not visible. An empty value automatically sets
+the number of columns to fit the screen.
 
 Hex
 ---

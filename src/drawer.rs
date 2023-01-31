@@ -313,6 +313,7 @@ pub struct CursorState {
     // (columns, rows)
     size: (usize, usize),
     cursor_pos: (usize, usize),
+    bytes_per_row: usize,
 }
 
 impl CursorState {
@@ -320,11 +321,12 @@ impl CursorState {
         Self {
             size,
             cursor_pos: (0, VERTICAL_CURSOR_PAD),
+            bytes_per_row: size.0,
         }
     }
     /// Updates the screen size, changing the cursor position if neccessary.
     /// Returns the difference of the base address of the cursor view.
-    pub fn resize(&mut self, size: (usize, usize)) -> isize {
+    pub fn resize(&mut self, size: (usize, usize), bytes_per_row: usize) -> isize {
         // refuse to resize too small and just keep the old size and draw nonsense instead
         if size.0 < 1 || size.1 < 2 * VERTICAL_CURSOR_PAD + 1 {
             return 0;
@@ -333,17 +335,18 @@ impl CursorState {
         self.size = size;
         // modulo is a nice operation for truncating this, since this
         // will keep addresses mostly aligned with 8 (or 4 for smaller sizes)
-        self.cursor_pos.0 %= self.size.0;
-        self.cursor_pos.1 = self.cursor_pos.1.clamp(self.min_row(), self.max_row());
+        self.cursor_pos.0 %= self.get_size_x();
+        self.cursor_pos.1 = self.get_y().clamp(self.min_row(), self.max_row());
+        self.bytes_per_row = bytes_per_row;
         prev_index as isize - self.get_index() as isize
     }
     /// Jump the curser relative to current position.
     /// Returns relative change in (column, rows)
     pub fn jump(&self, diff: isize) -> (isize, isize) {
         let front_column = self.cursor_pos.0 as isize + diff;
-        let row_change = front_column.div_euclid(self.size.0 as isize);
+        let row_change = front_column.div_euclid(self.bytes_per_row as isize);
         let column_change =
-            front_column.rem_euclid(self.size.0 as isize) - self.cursor_pos.0 as isize;
+            front_column.rem_euclid(self.bytes_per_row as isize) - self.cursor_pos.0 as isize;
         (column_change, row_change)
     }
     /// gets the column of the cursor
@@ -364,11 +367,17 @@ impl CursorState {
     }
     /// gets the index of the cursor within the view rectangle
     pub fn get_index(&self) -> usize {
-        self.get_y() * self.size.0 + self.get_x()
+        self.get_y() * self.bytes_per_row + self.get_x()
     }
     /// gets the size of the view
     pub fn get_size(&self) -> usize {
-        self.size.0 * self.size.1
+        self.bytes_per_row * self.size.1
+    }
+    /// gets the number of bytes in a row
+    /// this is different from the number of columns in case
+    /// where the bytes would not all fit in a row
+    pub fn bytes_per_row(&self) -> usize {
+        self.bytes_per_row
     }
     /// Moves the cursor xdiff columns and ydiff rows
     /// Returns the change of position of the underlying view into
@@ -384,7 +393,7 @@ impl CursorState {
         let dev_x = new_x - actual_x;
         let dev_y = new_y - actual_y;
 
-        dev_y * self.size.0 as isize + dev_x
+        dev_y * self.bytes_per_row as isize + dev_x
     }
     /// when trying to move xdiff in the x direction,
     /// this returns the actual amount you can move without
@@ -399,7 +408,7 @@ impl CursorState {
     /// going out of bounds
     fn restrict_ydiff(&self, ydiff: isize, bounds: Range<isize>) -> isize {
         let cursor_pos = self.get_index() as isize;
-        let width = self.get_size_x() as isize;
+        let width = self.bytes_per_row as isize;
         let ydiff_bounds =
             ((bounds.start - cursor_pos) / width)..((bounds.end - cursor_pos - 1) / width);
         ydiff.clamp(ydiff_bounds.start, ydiff_bounds.end)
@@ -439,7 +448,6 @@ impl CursorState {
         if bounds.is_empty() {
             return 0;
         }
-        let width = self.get_size_x() as isize;
         let old_cursor_y = self.get_y() as isize;
         let new_cursor_y =
             (old_cursor_y - ydiff).clamp(self.min_row() as isize, self.max_row() as isize);
@@ -449,7 +457,7 @@ impl CursorState {
             - new_cursor_y;
         self.cursor_pos = (self.get_x(), new_cursor_y as usize);
 
-        actual_ydiff * width
+        actual_ydiff * self.bytes_per_row as isize
     }
     /// moves according to the information in the move struct without going
     /// out of bounds
@@ -539,6 +547,8 @@ pub struct Style {
     pub vertical: bool,
     pub spacer: bool,
     pub right_to_left: bool,
+    #[serde(skip)]
+    pub column_count: Option<u16>,
 }
 
 impl Style {
@@ -631,13 +641,14 @@ impl Style {
     }
     /// returns the number of columns that are displayed on a given display width
     /// Goes in steps of 8 above 24, steps of 4 for 8 - 24 and steps of 1 for < 8
-    pub fn get_doublehex_dims(&self, columns: usize, rows: usize) -> (usize, usize) {
+    /// in case the column_count is not set, otherwise it uses the column_count
+    pub fn get_doublehex_dims(&self, columns: usize, rows: usize) -> ((usize, usize), usize) {
         let y = if self.vertical {
             rows.saturating_sub(3) / 2
         } else {
             rows.saturating_sub(2)
         };
-        let x = if columns <= self.const_overhead() {
+        let max_col = if columns <= self.const_overhead() {
             1
         } else {
             let available_col = columns - self.const_overhead();
@@ -651,7 +662,11 @@ impl Style {
             } else {
                 available_col
             };
-            let max_col = without_spacer / unit_width;
+            without_spacer / unit_width
+        };
+        let x = if let Some(count) = self.column_count {
+            max_col.min(count as usize)
+        } else {
             if max_col < 8 {
                 max_col
             } else if max_col < 24 {
@@ -660,7 +675,12 @@ impl Style {
                 max_col / 8 * 8
             }
         };
-        (x, y)
+        let bytes_per_row = if let Some(count) = self.column_count {
+            count as usize
+        } else {
+            x
+        };
+        ((x, y), bytes_per_row)
     }
 }
 
@@ -673,6 +693,7 @@ impl Default for Style {
             vertical: false,
             spacer: false,
             right_to_left: false,
+            column_count: None,
         }
     }
 }
@@ -976,5 +997,23 @@ impl DoubleHexContext {
                 Effect::None,
             );
         }
+    }
+
+    /// decrease the amount of columns by one
+    pub fn dec_columns(&mut self) {
+        let default = self.cursor.get_size_x() as u16;
+        self.style.column_count = Some(
+            self.style
+                .column_count
+                .unwrap_or(default)
+                .saturating_sub(1)
+                .max(1),
+        );
+    }
+    /// increase the amount of columns by one
+    pub fn inc_columns(&mut self) {
+        let default = self.cursor.get_size_x() as u16;
+        self.style.column_count =
+            Some(self.style.column_count.unwrap_or(default).saturating_add(1));
     }
 }

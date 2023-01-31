@@ -20,6 +20,7 @@ Keys:
  * 'N': Jump to previous search result
  * Home: Jump to first address
  * End: Jump to last address
+ * '[' and ']': Remove or add a hex column
 
 Unaligned View
 --------------

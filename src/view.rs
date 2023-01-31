@@ -45,9 +45,10 @@ impl Unaligned {
     pub fn resize(&mut self, dimensions: (usize, usize)) -> bool {
         let (columns, rows) = dimensions;
         let old_dimensions = (self.dh.cursor.get_size_x(), self.dh.cursor.get_size_y());
-        let new_dimensions = self.dh.style.get_doublehex_dims(columns, rows);
-        self.index += self.dh.cursor.resize(new_dimensions);
-        (old_dimensions) != new_dimensions
+        let old_bytes_per_row = self.dh.cursor.bytes_per_row();
+        let (new_dimensions, bytes_per_row) = self.dh.style.get_doublehex_dims(columns, rows);
+        self.index += self.dh.cursor.resize(new_dimensions, bytes_per_row);
+        old_dimensions != new_dimensions && old_bytes_per_row != bytes_per_row
     }
     /// Redraws without checking for resize.
     /// clear indicates whether the screen should be cleared before.
@@ -133,7 +134,7 @@ impl Unaligned {
         let mut next_second = second_range.into_iter().peekable();
         for x in 0..self.dh.cursor.get_size_y() {
             // address of the nth line
-            let base_addr = (x * self.dh.cursor.get_size_x()) as isize + self.index;
+            let base_addr = (x * self.dh.cursor.bytes_per_row()) as isize + self.index;
             let address = (
                 self.data.get_first_addr(base_addr),
                 self.data.get_second_addr(base_addr),
@@ -297,6 +298,16 @@ impl Unaligned {
             _ => (),
         }
     }
+    /// Inreases the column count by one and refreshes the view
+    pub fn add_column<B: Backend>(&mut self, printer: &mut B) {
+        self.dh.inc_columns();
+        self.refresh(printer);
+    }
+    /// Decreases the column count by one and refreshes the view
+    pub fn remove_column<B: Backend>(&mut self, printer: &mut B) {
+        self.dh.dec_columns();
+        self.refresh(printer);
+    }
     /// Process a single action/event
     pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: Action) {
         match action {
@@ -304,6 +315,8 @@ impl Unaligned {
             Action::CursorFirst => self.change_active_cursor(printer, CursorActive::First),
             Action::CursorBoth => self.change_active_cursor(printer, CursorActive::Both),
             Action::CursorSecond => self.change_active_cursor(printer, CursorActive::Second),
+            Action::AddColumn => self.add_column(printer),
+            Action::RemoveColumn => self.remove_column(printer),
             otherwise => self.process_move(printer, otherwise),
         }
     }
@@ -611,8 +624,7 @@ impl Aligned {
     }
     /// Checks whether a given range of indexes overlaps with the indexes currently visible.
     fn is_in_view(&self, range: Range<isize>) -> bool {
-        let self_range = self.index
-            ..self.index + (self.dh.cursor.get_size_x() * self.dh.cursor.get_size_y()) as isize;
+        let self_range = self.index..self.index + (self.dh.cursor.get_size()) as isize;
         !(self_range.start >= range.end || self_range.end <= range.start)
     }
     /// returns the search results visible in the current view
@@ -651,7 +663,7 @@ impl Aligned {
         let mut next_second = second_range.into_iter().peekable();
         for x in 0..self.dh.cursor.get_size_y() {
             // address of current line to be converted
-            let base_addr = (x * self.dh.cursor.get_size_x()) as isize + self.index;
+            let base_addr = (x * self.dh.cursor.bytes_per_row()) as isize + self.index;
             let mut bytes = Vec::new();
             for alignel in self
                 .data
@@ -765,9 +777,10 @@ impl Aligned {
     pub fn resize(&mut self, dimensions: (usize, usize)) -> bool {
         let (columns, rows) = dimensions;
         let old_dimensions = (self.dh.cursor.get_size_x(), self.dh.cursor.get_size_y());
-        let new_dimensions = self.dh.style.get_doublehex_dims(columns, rows);
-        self.index += self.dh.cursor.resize(new_dimensions);
-        (old_dimensions) != new_dimensions
+        let old_bytes_per_row = self.dh.cursor.bytes_per_row();
+        let (new_dimensions, bytes_per_row) = self.dh.style.get_doublehex_dims(columns, rows);
+        self.index += self.dh.cursor.resize(new_dimensions, bytes_per_row);
+        old_dimensions != new_dimensions && old_bytes_per_row != bytes_per_row
     }
     /// Redraws the current view without checking and updating the view for changes.
     pub fn redraw<B: Backend>(&self, printer: &mut B, clear: bool) {
@@ -860,7 +873,7 @@ impl Aligned {
     pub fn jump_next_difference<B: Backend>(&mut self, printer: &mut B) {
         // skip half a page
         let first_address = (self.cursor_index()
-            + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.get_size_x() as isize)
+            + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.bytes_per_row() as isize)
             .clamp(self.data.bounds().start, self.data.bounds().end - 1);
         let mut target_address = None;
         for i in first_address..=self.data.bounds().end {
@@ -938,6 +951,16 @@ impl Aligned {
             )),
         )
     }
+    /// Inreases the column count by one and refreshes the view
+    pub fn add_column<B: Backend>(&mut self, printer: &mut B) {
+        self.dh.inc_columns();
+        self.refresh(printer);
+    }
+    /// Decreases the column count by one and refreshes the view
+    pub fn remove_column<B: Backend>(&mut self, printer: &mut B) {
+        self.dh.dec_columns();
+        self.refresh(printer);
+    }
     /// Process move events
     pub fn process_move<B: Backend>(&mut self, printer: &mut B, action: Action) {
         match action {
@@ -962,6 +985,8 @@ impl Aligned {
             Action::Bottom => self.jump_end(printer),
             Action::NextSearch => self.jump_next_search_result(printer),
             Action::PrevSearch => self.jump_prev_search_result(printer),
+            Action::AddColumn => self.add_column(printer),
+            Action::RemoveColumn => self.remove_column(printer),
             _ => (),
         }
     }
@@ -1046,12 +1071,13 @@ fn is_next_search_result<O: Ord + Copy>(
     iter: &mut Peekable<impl Iterator<Item = (O, O)>>,
     addr: O,
 ) -> bool {
-    iter.peek()
-        .filter(|(_, end)| end > &addr)
-        .copied()
-        .or_else(|| {
-            iter.next();
-            iter.peek().copied()
-        })
-        .map_or(false, |(start, end)| (start..end).contains(&addr))
+    loop {
+        match iter.peek() {
+            Some((_, end)) if end <= &addr => {
+                iter.next();
+            }
+            otherwise => break otherwise.copied(),
+        }
+    }
+    .map_or(false, |(start, end)| (start..end).contains(&addr))
 }
