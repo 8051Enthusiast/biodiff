@@ -10,7 +10,7 @@ use crate::{
     align::{AlignAlgorithm, AlignElement},
     backend::{Action, Backend, Cursiv},
     datastruct::{CompVec, DoubleVec, SignedArray},
-    drawer::{ByteData, CursorActive, DoubleHexContext, DoubleHexLine, Move},
+    drawer::{ByteData, ColumnSetting, CursorActive, DoubleHexContext, DoubleHexLine, Move},
     file::{FileContent, FileState},
     search::{Query, SearchContext, SearchResults},
 };
@@ -165,6 +165,21 @@ impl Unaligned {
         }
         content
     }
+    fn bytes_in_view(&self) -> [Vec<u8>; 2] {
+        let mut ret = [vec![], vec![]];
+        for (first, second) in self
+            .data
+            .get_range(self.index..self.index + self.dh.cursor.get_size() as isize)
+        {
+            if let Some(f) = first {
+                ret[0].push(f);
+            }
+            if let Some(s) = second {
+                ret[1].push(s);
+            }
+        }
+        ret
+    }
     pub fn set_shift(&mut self, shift: isize) {
         self.data.shift = shift;
     }
@@ -308,6 +323,20 @@ impl Unaligned {
         self.dh.dec_columns();
         self.refresh(printer);
     }
+    /// Sets the column count to the peak of the autocorrelation of
+    /// the bytes in the current view and refreshes the view
+    pub fn auto_column<B: Backend>(&mut self, printer: &mut B) {
+        let [mut first, mut second] = self.bytes_in_view();
+        // set vectors to be empty if the cursor is not active
+        if !self.cursor_act.is_first() {
+            first = Vec::new();
+        }
+        if !self.cursor_act.is_second() {
+            second = Vec::new();
+        }
+        self.dh.auto_columns([&first, &second]);
+        self.refresh(printer);
+    }
     /// Process a single action/event
     pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: Action) {
         match action {
@@ -317,6 +346,11 @@ impl Unaligned {
             Action::CursorSecond => self.change_active_cursor(printer, CursorActive::Second),
             Action::AddColumn => self.add_column(printer),
             Action::RemoveColumn => self.remove_column(printer),
+            Action::AutoColumn => self.auto_column(printer),
+            Action::ResetColumn => {
+                self.dh.style.column_count = ColumnSetting::Fit;
+                self.refresh(printer);
+            }
             otherwise => self.process_move(printer, otherwise),
         }
     }
@@ -691,6 +725,23 @@ impl Aligned {
         }
         content
     }
+    fn bytes_in_view(&self) -> [Vec<u8>; 2] {
+        let mut ret = [vec![], vec![]];
+        for alignel in self
+            .data
+            .get_range(self.index..self.index + self.dh.cursor.get_size() as isize)
+        {
+            if let Some(alignel) = alignel {
+                if let Some(xbyte) = alignel.xbyte {
+                    ret[0].push(xbyte);
+                }
+                if let Some(ybyte) = alignel.ybyte {
+                    ret[1].push(ybyte);
+                }
+            }
+        }
+        ret
+    }
     /// returns the current index of the cursor into the data
     fn cursor_index(&self) -> isize {
         self.index + self.dh.cursor.get_index() as isize
@@ -961,6 +1012,13 @@ impl Aligned {
         self.dh.dec_columns();
         self.refresh(printer);
     }
+    /// Sets the column count to the peak of the autocorrelation of
+    /// the bytes in the current view and refreshes the view
+    pub fn auto_column<B: Backend>(&mut self, printer: &mut B) {
+        let [first, second] = self.bytes_in_view();
+        self.dh.auto_columns([&first, &second]);
+        self.refresh(printer);
+    }
     /// Process move events
     pub fn process_move<B: Backend>(&mut self, printer: &mut B, action: Action) {
         match action {
@@ -987,6 +1045,11 @@ impl Aligned {
             Action::PrevSearch => self.jump_prev_search_result(printer),
             Action::AddColumn => self.add_column(printer),
             Action::RemoveColumn => self.remove_column(printer),
+            Action::AutoColumn => self.auto_column(printer),
+            Action::ResetColumn => {
+                self.dh.style.column_count = ColumnSetting::Fit;
+                self.refresh(printer);
+            }
             _ => (),
         }
     }

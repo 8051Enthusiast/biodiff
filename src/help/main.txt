@@ -21,6 +21,9 @@ Keys:
  * Home: Jump to first address
  * End: Jump to last address
  * '[' and ']': Remove or add a hex column
+ * '0': Set columns to fit screen
+ * '=': Attempt to align column number to the repetitions of bytes
+        currently visible by doing an autocorrelation
 
 Unaligned View
 --------------

@@ -5,7 +5,7 @@ use crate::{
     },
     backend::Dummy,
     control::Settings,
-    drawer::{DisplayMode, Style},
+    drawer::{ColumnSetting, DisplayMode, Style},
     file::FileContent,
     search::{Query, QueryType, SearchContext},
     util::{self, Finalable},
@@ -174,9 +174,9 @@ fn apply_style(siv: &mut Cursive) {
         .expect("Could not find column count edit view")
         .get_content();
     let column_count = match column_count.as_str() {
-        "" => None,
-        otherwise => match otherwise.parse::<u16>() {
-            Ok(c) => Some(c),
+        "" => ColumnSetting::Fit,
+        otherwise => match otherwise.parse::<ColumnSetting>() {
+            Ok(c) => c,
             Err(e) => {
                 siv.add_layer(
                     Dialog::text(format!("Could not parse column count: {}", e))
@@ -412,37 +412,30 @@ pub fn style(siv: &mut Cursive) -> impl View {
         .expect("Could not get style settings from cursive")
         .style;
     let column_string = match style_settings.column_count {
-        None => String::new(),
-        Some(x) => x.to_string(),
+        ColumnSetting::Fit => String::new(),
+        ColumnSetting::Fixed(x) => x.to_string(),
+        ColumnSetting::Multiple(x) => format!("{}x", x),
     };
     let column_box = EditView::new()
         .content(column_string)
         .on_edit_mut(move |siv, s, _| {
-            let (valid, m) = match s {
-                "" => (true, None),
-                otherwise => {
-                    let x = otherwise.parse::<u16>();
-                    match x {
-                        Ok(x) => (true, Some(x)),
-                        Err(_) => (false, None),
-                    }
-                }
-            };
-            if valid {
+            let col = s.parse::<ColumnSetting>();
+            if col.is_ok() {
                 siv.call_on_name("column_count", |v: &mut EditView| {
                     v.set_style(StyleType::from(PaletteColor::Secondary))
-                })
+                });
             } else {
                 siv.call_on_name("column_count", |v: &mut EditView| {
                     v.set_style(StyleType::from(PaletteColor::Highlight))
                 });
-                return;
             };
-            on_hexview(
-                siv,
-                move |v| v.dh.style.column_count = m,
-                move |v| v.dh.style.column_count = m,
-            )
+            if let Ok(m) = col {
+                on_hexview(
+                    siv,
+                    move |v| v.dh.style.column_count = m,
+                    move |v| v.dh.style.column_count = m,
+                )
+            }
         })
         .with_name("column_count")
         .fixed_width(TEXT_WIDTH);

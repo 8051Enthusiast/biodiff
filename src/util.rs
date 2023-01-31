@@ -3,6 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use realfft::{num_complex::Complex32, RealFftPlanner};
+
 /// a channel that bunches up data into vectors if there is too much data at once
 /// (to avoid too many callbacks to cursive)
 /// used by the rate_limit_channel function
@@ -126,6 +128,30 @@ pub fn entropy(data: &[u8]) -> f32 {
             -freq * freq.log2() / 8.0
         })
         .sum::<f32>()
+}
+
+pub fn autocorrelation(data: &[u8]) -> Vec<f32> {
+    let padded_len = data.len() * 2;
+    let avg = data.iter().copied().map(u32::from).sum::<u32>() as f32 / data.len() as f32;
+    let mut a = vec![0.0f32; padded_len];
+    let mut a_out = vec![Complex32::new(0.0, 0.0); padded_len / 2 + 1];
+    let mut fft_planner = RealFftPlanner::new();
+    let fft_forward = fft_planner.plan_fft_forward(padded_len);
+    let fft_inverse = fft_planner.plan_fft_inverse(padded_len);
+    for (i, x) in data.iter().enumerate() {
+        a[i] = *x as f32 - avg;
+    }
+    let square_sum = a.iter().map(|x| x * x).sum::<f32>();
+    if square_sum == 0.0 {
+        return vec![0.0f32; padded_len];
+    }
+    fft_forward.process(&mut a, &mut a_out).unwrap();
+    for x in a_out.iter_mut() {
+        *x = *x * x.conj() / padded_len as f32 / square_sum;
+    }
+    fft_inverse.process(&mut a_out, &mut a).unwrap();
+    a.truncate(data.len());
+    a
 }
 
 #[cfg(test)]

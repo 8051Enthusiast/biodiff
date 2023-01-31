@@ -47,6 +47,8 @@ pub enum Action {
     CursorSecond,
     AddColumn,
     RemoveColumn,
+    AutoColumn,
+    ResetColumn,
 }
 
 impl TryFrom<Event> for Action {
@@ -102,6 +104,8 @@ impl TryFrom<Event> for Action {
                 KeyCode::End => Action::Bottom,
                 KeyCode::Char(']') => Action::AddColumn,
                 KeyCode::Char('[') => Action::RemoveColumn,
+                KeyCode::Char('=') => Action::AutoColumn,
+                KeyCode::Char('0') => Action::ResetColumn,
                 _ => return Err(()),
             },
         )

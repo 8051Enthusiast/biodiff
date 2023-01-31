@@ -39,8 +39,13 @@ Column Count
 ------------
 Sets the number of hex columns. If there are more columns than
 would fit on the screen, the rows are cut off so that the higher
-addresses are not visible. An empty value automatically sets
-the number of columns to fit the screen.
+addresses are not visible.
+An empty value automatically sets the number of columns
+to fit the screen.
+A value with an x at the end means that the number of columns
+is a multiple of the number before the x. For example, 16x means
+that the number of columns is a multiple of 16 and is adjusted
+to fit the screen.
 
 Hex
 ---

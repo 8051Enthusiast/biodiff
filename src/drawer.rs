@@ -1,6 +1,9 @@
-use std::ops::Range;
+use std::{iter::repeat, num::ParseIntError, ops::Range, str::FromStr};
 
-use crate::backend::{Backend, Color, Effect};
+use crate::{
+    backend::{Backend, Color, Effect},
+    util::autocorrelation,
+};
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
 
@@ -538,6 +541,38 @@ impl Move {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
+pub enum ColumnSetting {
+    #[default]
+    Fit,
+    Fixed(u16),
+    Multiple(u16),
+}
+
+impl ColumnSetting {
+    pub fn fixed(self) -> Option<u16> {
+        match self {
+            Self::Fixed(n) => Some(n),
+            _ => None,
+        }
+    }
+}
+
+impl FromStr for ColumnSetting {
+    type Err = ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            return Ok(Self::Fit);
+        }
+        if let Some(rest) = s.strip_suffix('x') {
+            Ok(Self::Multiple(rest.parse()?))
+        } else {
+            Ok(Self::Fixed(s.parse()?))
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Style {
@@ -548,7 +583,7 @@ pub struct Style {
     pub spacer: bool,
     pub right_to_left: bool,
     #[serde(skip)]
-    pub column_count: Option<u16>,
+    pub column_count: ColumnSetting,
 }
 
 impl Style {
@@ -664,21 +699,29 @@ impl Style {
             };
             without_spacer / unit_width
         };
-        let x = if let Some(count) = self.column_count {
-            max_col.min(count as usize)
-        } else {
-            if max_col < 8 {
-                max_col
-            } else if max_col < 24 {
-                max_col / 4 * 4
-            } else {
-                max_col / 8 * 8
+        let x = match self.column_count {
+            ColumnSetting::Fit => {
+                if max_col < 8 {
+                    max_col
+                } else if max_col < 24 {
+                    max_col / 4 * 4
+                } else {
+                    max_col / 8 * 8
+                }
+            }
+            ColumnSetting::Fixed(n) => max_col.min(n as usize),
+            ColumnSetting::Multiple(n) => {
+                if max_col < n as usize {
+                    max_col
+                } else {
+                    max_col / n as usize * n as usize
+                }
             }
         };
-        let bytes_per_row = if let Some(count) = self.column_count {
-            count as usize
-        } else {
-            x
+        let bytes_per_row = match self.column_count {
+            ColumnSetting::Fit => x,
+            ColumnSetting::Fixed(n) => n as usize,
+            ColumnSetting::Multiple(n) => (x / n as usize * n as usize).max(n as usize),
         };
         ((x, y), bytes_per_row)
     }
@@ -693,7 +736,7 @@ impl Default for Style {
             vertical: false,
             spacer: false,
             right_to_left: false,
-            column_count: None,
+            column_count: ColumnSetting::Fit,
         }
     }
 }
@@ -1002,9 +1045,10 @@ impl DoubleHexContext {
     /// decrease the amount of columns by one
     pub fn dec_columns(&mut self) {
         let default = self.cursor.get_size_x() as u16;
-        self.style.column_count = Some(
+        self.style.column_count = ColumnSetting::Fixed(
             self.style
                 .column_count
+                .fixed()
                 .unwrap_or(default)
                 .saturating_sub(1)
                 .max(1),
@@ -1013,7 +1057,50 @@ impl DoubleHexContext {
     /// increase the amount of columns by one
     pub fn inc_columns(&mut self) {
         let default = self.cursor.get_size_x() as u16;
-        self.style.column_count =
-            Some(self.style.column_count.unwrap_or(default).saturating_add(1));
+        self.style.column_count = ColumnSetting::Fixed(
+            self.style
+                .column_count
+                .fixed()
+                .unwrap_or(default)
+                .saturating_add(1),
+        );
+    }
+    pub fn auto_columns(&mut self, bytes: [&[u8]; 2]) {
+        const MIN_AUTOCOR_WIDTH: usize = 6;
+        const MAX_AUTOCOR_WIDTH: usize = 256;
+        const AUTOCOR_THRESHOLD: f32 = 0.2;
+        let [first, second] = bytes.map(autocorrelation);
+        let max_len = first.len().max(second.len());
+        let ratio = if second.len() > 0 {
+            first.len() as f32 / second.len() as f32
+        } else {
+            1.0
+        };
+        let sum: Vec<f32> = first
+            .iter()
+            .chain(repeat(&0.0))
+            .zip(second.iter().chain(repeat(&0.0)))
+            .map(|(x, y)| ratio * x + (1.0 - ratio) * y)
+            .take(max_len.min(MAX_AUTOCOR_WIDTH))
+            .skip(MIN_AUTOCOR_WIDTH)
+            .collect();
+        let cmp = |x: &f32, y: &f32| {
+            (!x.is_nan())
+                .then_some(*x)
+                .partial_cmp(&(!y.is_nan()).then_some(*y))
+                .unwrap()
+        };
+        let max_index = sum
+            .iter()
+            .enumerate()
+            .max_by(|(_, x), (_, y)| cmp(x, y))
+            .filter(|(_, x)| **x > AUTOCOR_THRESHOLD)
+            .map(|(i, _)| i + MIN_AUTOCOR_WIDTH);
+        let max_index = if let Some(index) = max_index {
+            index
+        } else {
+            return;
+        };
+        self.style.column_count = ColumnSetting::Multiple(max_index as u16);
     }
 }
