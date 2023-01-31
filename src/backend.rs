@@ -55,9 +55,9 @@ impl TryFrom<Event> for Action {
         Ok(
             match match value {
                 Event::Resize(_, _) => return Ok(Action::Refresh),
-                Event::Mouse(_) => return Err(()),
                 // ignore modifiers for now
                 Event::Key(x) => x.code,
+                Event::Mouse(_) | Event::FocusGained | Event::FocusLost | Event::Paste(_) => return Err(()),
             } {
                 KeyCode::Up => Action::Up,
                 KeyCode::Down => Action::Down,

@@ -100,12 +100,12 @@ impl AlignAlgorithm {
         match self.mode {
             AlignMode::Local => {
                 // we only need one thread
-                std::thread::spawn(|| align_whole(x, y, scorer, band, sender));
+                std::thread::spawn(move || align_whole(x, y, scorer, band, sender));
             }
             AlignMode::Global => {
                 // make xclip and yclip essentially infinitely expensive so that we have global alignment
                 let global_scorer = scorer.xclip(pairwise::MIN_SCORE).yclip(pairwise::MIN_SCORE);
-                std::thread::spawn(|| align_whole(x, y, global_scorer, band, sender));
+                std::thread::spawn(move || align_whole(x, y, global_scorer, band, sender));
             }
             AlignMode::Blockwise(blocksize) => {
                 // for Blockwise, we need one thread for each direction from the cursor

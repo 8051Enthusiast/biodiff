@@ -16,21 +16,21 @@ members = [
 ]
 
 [dependencies]
-bio = "0.41.0"
-crossterm = "0.24.0"
-crossbeam-utils = "0.8.10"
-cursive_buffered_backend = "0.6.0"
-unicode-width = "0.1.9"
-memmap2 = "0.5.5"
-serde = { version = "1.0.140", features = ["derive"] }
-serde_json = "1.0.82"
+bio = "1.1.0"
+crossterm = "0.25.0"
+crossbeam-utils = "0.8.14"
+cursive_buffered_backend = "0.6.1"
+unicode-width = "0.1.10"
+memmap2 = "0.5.8"
+serde = { version = "1.0.152", features = ["derive"] }
+serde_json = "1.0.91"
 dirs = "4.0.0"
-regex = "1.6.0"
+regex = "1.7.1"
 hexagex = { path = "hexagex", version = "0.2.0" }
-realfft = "3.0.0"
-num_cpus = "1.13.1"
+realfft = "3.2.0"
+num_cpus = "1.15.0"
 
 [dependencies.cursive]
-version = "0.19.0"
+version = "0.20.0"
 default-features = false
 features = ["crossterm-backend"]

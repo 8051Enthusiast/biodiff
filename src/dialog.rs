@@ -12,7 +12,12 @@ use crate::{
     view::{Aligned, Unaligned},
 };
 use cursive::{
-    event::Key, theme::PaletteColor, traits::*, utils::Counter, view::ViewWrapper, views::*,
+    event::Key,
+    theme::{PaletteColor, StyleType},
+    traits::*,
+    utils::Counter,
+    view::ViewWrapper,
+    views::*,
     wrap_impl, CbSink, Cursive, View,
 };
 use std::{
@@ -39,10 +44,10 @@ fn validated_box<F: Fn(&str) -> bool + 'static>(
         .on_edit_mut(move |siv, s, _| {
             match validator(s) {
                 true => siv.call_on_name(name, |v: &mut EditView| {
-                    v.set_style(PaletteColor::Secondary.into())
+                    v.set_style(StyleType::from(PaletteColor::Secondary))
                 }),
                 false => siv.call_on_name(name, |v: &mut EditView| {
-                    v.set_style(PaletteColor::Highlight.into())
+                    v.set_style(StyleType::from(PaletteColor::Highlight))
                 }),
             };
         })
