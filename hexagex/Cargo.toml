@@ -3,7 +3,7 @@ name = "hexagex"
 description = "Match binary data with hexadecimal regexes"
 repository = "https://www.github.com/8051Enthusiast/biodiff"
 authors = ["8051Enthusiast <8051Enthusiast@protonmail.com>"]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 license = "MIT"
 
@@ -18,8 +18,8 @@ name = "hexagex"
 path = "src/bin.rs"
 
 [dependencies]
-regex = "1.6.0"
-regex-syntax = "0.6.27"
+regex = "1.7.1"
+regex-syntax = "0.6.28"
 
 [dev-dependencies]
 hex = "0.4.3"

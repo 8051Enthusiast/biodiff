@@ -1,8 +1,13 @@
-0.2.1 (2020-07-22)
+0.2.2 (2023-01-31)
+==================
+* update dependencies
+* fix clippy lints
+
+0.2.1 (2022-07-22)
 ==================
 * update regex dependency to be the same as biodiff
 
-0.2.0 (2020-07-22)
+0.2.0 (2022-07-22)
 ==================
 * add alignment checking (breaking change)
 
