@@ -305,7 +305,10 @@ impl Unaligned {
                 printer,
                 Move::ViewY(-(self.dh.cursor.get_size_y() as isize) / 2),
             ),
-            Action::NextDifference => self.jump_next_difference(printer),
+            Action::NextDifference => self.jump_next_difference(printer, true, false),
+            Action::NextInsertion => self.jump_next_difference(printer, true, true),
+            Action::PrevDifference => self.jump_next_difference(printer, false, false),
+            Action::PrevInsertion => self.jump_next_difference(printer, false, true),
             Action::Top => self.jump_start(printer),
             Action::Bottom => self.jump_end(printer),
             Action::NextSearch => self.jump_next_search_result(printer),
@@ -442,23 +445,22 @@ impl Unaligned {
         self.goto_index(printer, next)
     }
     /// Jump to the index where the next bytes are different
-    pub fn jump_next_difference<B: Backend>(&mut self, printer: &mut B) {
-        // skip half a page
-        let first_address = (self.cursor_index()
-            + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.get_size_x() as isize)
-            .clamp(self.data.bounds().start, self.data.bounds().end - 1);
-        let mut target_address = None;
-        for i in first_address..self.data.bounds().end {
-            let current = self.data.get(i);
-            if current.0 != current.1 || (current.0.is_none() && current.1.is_none()) {
-                target_address = Some(i);
-                break;
-            }
-        }
-        self.goto_index(
-            printer,
-            target_address.unwrap_or(self.data.bounds().end - 1),
+    pub fn jump_next_difference<B: Backend>(
+        &mut self,
+        printer: &mut B,
+        forward: bool,
+        insertion: bool,
+    ) {
+        let target_address = next_difference(
+            self.cursor_index(),
+            self.data.bounds(),
+            forward,
+            |i| match self.data.get(i) {
+                (None | Some(_), None) | (None, Some(_)) => true,
+                (Some(a), Some(b)) => a != b && !insertion,
+            },
         );
+        self.goto_index(printer, target_address);
     }
     /// Go to the first position of the file
     pub fn jump_start<B: Backend>(&mut self, printer: &mut B) {
@@ -921,23 +923,22 @@ impl Aligned {
         self.goto_index(printer, next)
     }
     /// Jump to the index where the next bytes are different
-    pub fn jump_next_difference<B: Backend>(&mut self, printer: &mut B) {
-        // skip half a page
-        let first_address = (self.cursor_index()
-            + (self.dh.cursor.get_size_y() / 2) as isize * self.dh.cursor.bytes_per_row() as isize)
-            .clamp(self.data.bounds().start, self.data.bounds().end - 1);
-        let mut target_address = None;
-        for i in first_address..=self.data.bounds().end {
-            let current = self.data.get(i);
-            if current.map(|x| x.xbyte != x.ybyte).unwrap_or(true) {
-                target_address = Some(i);
-                break;
-            }
-        }
-        self.goto_index(
-            printer,
-            target_address.unwrap_or(self.data.bounds().end - 1),
+    pub fn jump_next_difference<B: Backend>(
+        &mut self,
+        printer: &mut B,
+        forward: bool,
+        insertion: bool,
+    ) {
+        let target_address = next_difference(
+            self.cursor_index(),
+            self.data.bounds(),
+            forward,
+            |i| match self.data.get(i).map(|x| (x.xbyte, x.ybyte)) {
+                None | Some((Some(_), None)) | Some((None, Some(_))) => true,
+                Some((x, y)) => x != y && !insertion,
+            },
         );
+        self.goto_index(printer, target_address);
     }
     /// Go to the first position of the file
     pub fn jump_start<B: Backend>(&mut self, printer: &mut B) {
@@ -1038,7 +1039,10 @@ impl Aligned {
                 printer,
                 Move::ViewY(-(self.dh.cursor.get_size_y() as isize) / 2),
             ),
-            Action::NextDifference => self.jump_next_difference(printer),
+            Action::NextDifference => self.jump_next_difference(printer, true, false),
+            Action::NextInsertion => self.jump_next_difference(printer, true, true),
+            Action::PrevDifference => self.jump_next_difference(printer, false, false),
+            Action::PrevInsertion => self.jump_next_difference(printer, false, true),
             Action::Top => self.jump_start(printer),
             Action::Bottom => self.jump_end(printer),
             Action::NextSearch => self.jump_next_search_result(printer),
@@ -1143,4 +1147,21 @@ fn is_next_search_result<O: Ord + Copy>(
         }
     }
     .map_or(false, |(start, end)| (start..end).contains(&addr))
+}
+
+fn next_difference(
+    address: isize,
+    range: Range<isize>,
+    forward: bool,
+    is_different: impl Fn(isize) -> bool,
+) -> isize {
+    let sign = if forward { 1 } else { -1 };
+    let mut i = address;
+    while range.contains(&i) && is_different(i) {
+        i += sign;
+    }
+    while range.contains(&i) && !is_different(i) {
+        i += sign;
+    }
+    i.clamp(range.start, range.end - 1)
 }
