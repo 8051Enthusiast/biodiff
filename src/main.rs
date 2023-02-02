@@ -1,11 +1,13 @@
 mod align;
 mod backend;
 mod control;
+mod cursor;
 mod datastruct;
 mod dialog;
-mod drawer;
+mod doublehex;
 mod file;
 mod search;
+mod style;
 mod util;
 mod view;
 use std::env;

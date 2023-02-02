@@ -16,9 +16,11 @@ use serde::{Deserialize, Serialize};
 use crate::{
     align::{AlignAlgorithm, AlignMode},
     backend::{send_cross_actions, Action, Cross, Dummy},
+    cursor::CursorState,
     dialog,
-    drawer::{CursorState, DoubleHexContext, Style},
+    doublehex::DoubleHexContext,
     file::FileState,
+    style::Style,
     view::{self, Aligned, AlignedMessage},
 };
 use std::{
