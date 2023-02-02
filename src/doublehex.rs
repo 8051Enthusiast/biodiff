@@ -309,11 +309,12 @@ impl DoubleHexContext {
 
         // status bar address
         let addr_print = disp_bottom_addr(cursor_addr, self.style.addr_width);
+        let addr_print = &addr_print[..addr_print.len().min(self.full_width())];
         if self.style.right_to_left {
             backend.set_pos(0, self.full_height() - 1);
         } else {
             backend.set_pos(
-                self.full_width().saturating_sub(addr_print.chars().count()),
+                self.full_width().saturating_sub(addr_print.len()),
                 self.full_height() - 1,
             );
         }
@@ -328,7 +329,9 @@ impl DoubleHexContext {
         first: &str,
         second: &str,
     ) {
-        let namewidth = self.hor_half_width().saturating_sub(title.width() + 2);
+        let title = &title[..title.len().min(self.hor_half_width() - 2)];
+        let namewidth = self.hor_half_width().saturating_sub(title.len() + 2);
+        // title is all ascii so just count bytes
         // function for truncating the string on the left when it is too long
         // also inserts an < to indicate that it was truncated
         let shorten = |s: &str| -> String {
@@ -376,10 +379,11 @@ impl DoubleHexContext {
         addresses: (Option<usize>, Option<usize>),
     ) {
         const BOTTOM_TEXT: &str =
-            "F1/1: Help   F2: Unalign  F3: Align    F4: Settings F6: Goto     F7: Search ";
+            "F1/1: Help F2: Unalign F3: Align F4: Settings F6: Goto F7: Search";
         let print_addr = disp_bottom_addr(addresses, self.style.addr_width);
-        let info_width = self.full_width().saturating_sub(print_addr.chars().count());
-        let bottom_text = BOTTOM_TEXT.chars().take(info_width).collect::<String>();
+        let print_addr = &print_addr[..print_addr.len().min(self.full_width())];
+        let info_width = self.full_width().saturating_sub(print_addr.len());
+        let bottom_text = &BOTTOM_TEXT[..BOTTOM_TEXT.len().min(info_width)];
         let info_text = if self.style.right_to_left {
             format!("{print_addr}{bottom_text:>info_width$}")
         } else {
