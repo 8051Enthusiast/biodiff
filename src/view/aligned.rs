@@ -239,10 +239,9 @@ impl Aligned {
     pub fn resize(&mut self, dimensions: (usize, usize)) -> bool {
         let (columns, rows) = dimensions;
         let old_dimensions = (self.dh.cursor.get_size_x(), self.dh.cursor.get_size_y());
-        let old_bytes_per_row = self.dh.cursor.bytes_per_row();
         let (new_dimensions, bytes_per_row) = self.dh.style.get_doublehex_dims(columns, rows);
         self.index += self.dh.cursor.resize(new_dimensions, bytes_per_row);
-        old_dimensions != new_dimensions && old_bytes_per_row != bytes_per_row
+        old_dimensions != new_dimensions
     }
     /// Redraws the current view without checking and updating the view for changes.
     pub fn redraw<B: Backend>(&self, printer: &mut B, clear: bool) {
