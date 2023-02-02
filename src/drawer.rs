@@ -1044,7 +1044,7 @@ impl DoubleHexContext {
 
     /// decrease the amount of columns by one
     pub fn dec_columns(&mut self) {
-        let default = self.cursor.get_size_x() as u16;
+        let default = self.cursor.bytes_per_row() as u16;
         self.style.column_count = ColumnSetting::Fixed(
             self.style
                 .column_count
@@ -1056,7 +1056,7 @@ impl DoubleHexContext {
     }
     /// increase the amount of columns by one
     pub fn inc_columns(&mut self) {
-        let default = self.cursor.get_size_x() as u16;
+        let default = self.cursor.bytes_per_row() as u16;
         self.style.column_count = ColumnSetting::Fixed(
             self.style
                 .column_count
