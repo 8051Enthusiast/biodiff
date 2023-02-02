@@ -6,8 +6,8 @@ Compare binary files using alignment algorithms.
 Keys:
  * left/right/up/down arrow: Move Cursor
  * 'h', 'j', 'k', 'l', Page Up/Down: Move view without moving cursor
- * 'a', 's', 'd' (Unaligned View): Choose active cursor
-                        primary/both/secondary view
+ * 'a', 's', 'd': Choose active cursor
+                  primary/both/secondary view
  * 'o' (Unaligned View): set offset between unaligned files
  * shift+down or space: Jump to the next difference
  * shift+up: Jump to the previous difference

@@ -23,7 +23,6 @@ pub struct Unaligned {
     searches: (Option<SearchResults>, Option<SearchResults>),
     index: isize,
     pub dh: DoubleHexContext,
-    cursor_act: CursorActive,
 }
 
 impl Unaligned {
@@ -39,7 +38,6 @@ impl Unaligned {
             searches: (first.search, second.search),
             index,
             dh,
-            cursor_act: CursorActive::Both,
         }
     }
     /// Resizes the view without drawing it, returning if anything changed
@@ -58,7 +56,7 @@ impl Unaligned {
         }
         let content = self.get_content();
         self.dh.print_doublehex_screen(&content, printer);
-        self.set_cursor(printer, self.cursor_act);
+        self.set_cursor(printer, self.dh.cursor_act);
         self.print_bars(printer);
         printer.refresh();
     }
@@ -86,7 +84,7 @@ impl Unaligned {
     }
     /// changes the active cursor to be cursor_act and moves back into bounds if the active cursor is outside bounds
     fn change_active_cursor<B: Backend>(&mut self, printer: &mut B, cursor_act: CursorActive) {
-        self.cursor_act = cursor_act;
+        self.dh.cursor_act = cursor_act;
         self.move_back_into_bounds(printer);
         self.set_cursor(printer, cursor_act);
         printer.refresh()
@@ -196,7 +194,7 @@ impl Unaligned {
     }
     /// returns the bound of the index of the currently active cursor(s)
     fn active_data_bounds(&self) -> Range<isize> {
-        match self.cursor_act {
+        match self.dh.cursor_act {
             CursorActive::Both | CursorActive::None => self.data.bounds(),
             CursorActive::First => self.data.first_bound(),
             CursorActive::Second => self.data.second_bound(),
@@ -209,27 +207,27 @@ impl Unaligned {
     /// when the currently active cursor is outside of bounds, move it back
     /// into bounds
     pub fn move_back_into_bounds<B: Backend>(&mut self, printer: &mut B) {
-        let old_active = self.cursor_act;
+        let old_active = self.dh.cursor_act;
         let bounds = self.active_data_bounds();
-        self.cursor_act = CursorActive::Both;
+        self.dh.cursor_act = CursorActive::Both;
         let cursor_pos = self.cursor_index();
         let new_index = if cursor_pos < bounds.start {
             bounds.start
         } else if cursor_pos >= bounds.end {
             bounds.end - 1
         } else {
-            self.cursor_act = old_active;
+            self.dh.cursor_act = old_active;
             return;
         };
         self.goto_index(printer, new_index);
-        self.cursor_act = old_active;
+        self.dh.cursor_act = old_active;
     }
     /// go to an index on both sides, regardless of currently active cursor
     pub fn goto_index_both<B: Backend>(&mut self, printer: &mut B, index: isize) {
-        let old_active = self.cursor_act;
-        self.cursor_act = CursorActive::Both;
+        let old_active = self.dh.cursor_act;
+        self.dh.cursor_act = CursorActive::Both;
         self.goto_index(printer, index);
-        self.cursor_act = old_active;
+        self.dh.cursor_act = old_active;
     }
     /// set the current shift in the data to `shift` and jump to the common
     /// sequence of highest entropy length
@@ -262,7 +260,7 @@ impl Unaligned {
         let relative_bounds = (bounds.start - self.index)..(bounds.end - self.index);
         let diff = self.dh.cursor.mov(movement, relative_bounds);
         // update the compvec in case the views are moved independently
-        let index_diff = match self.cursor_act {
+        let index_diff = match self.dh.cursor_act {
             CursorActive::Both => diff,
             CursorActive::First => self.data.add_first_shift(-diff),
             CursorActive::Second => self.data.add_second_shift(-diff),
@@ -270,14 +268,14 @@ impl Unaligned {
         };
         self.index += index_diff;
         // if they are moved independently, we cannot scroll
-        if !matches!(self.cursor_act, CursorActive::Both) {
+        if !matches!(self.dh.cursor_act, CursorActive::Both) {
             self.redraw(printer, false);
         } else if let Some(scroll_amount) = self.dh.cursor.full_row_move(index_diff) {
             // scroll if we can
             let content = self.get_content();
             self.dh
                 .print_doublehex_scrolled(&content, printer, scroll_amount);
-            self.set_cursor(printer, self.cursor_act);
+            self.set_cursor(printer, self.dh.cursor_act);
             if scroll_amount != 0 {
                 self.print_bars(printer);
             }
@@ -331,10 +329,10 @@ impl Unaligned {
     pub fn auto_column<B: Backend>(&mut self, printer: &mut B) {
         let [mut first, mut second] = self.bytes_in_view();
         // set vectors to be empty if the cursor is not active
-        if !self.cursor_act.is_first() {
+        if !self.dh.cursor_act.is_first() {
             first = Vec::new();
         }
-        if !self.cursor_act.is_second() {
+        if !self.dh.cursor_act.is_second() {
             second = Vec::new();
         }
         self.dh.auto_columns([&first, &second]);
@@ -371,11 +369,11 @@ impl Unaligned {
         right: bool,
         pos: usize,
     ) -> Result<(), String> {
-        if !right && !self.cursor_act.is_first() {
+        if !right && !self.dh.cursor_act.is_first() {
             return Err(
                 "Attempting to search on first view, but current cursor is on second view".into(),
             );
-        } else if right && !self.cursor_act.is_second() {
+        } else if right && !self.dh.cursor_act.is_second() {
             return Err(
                 "Attempting to search on second view, but current cursor is on first view".into(),
             );
@@ -402,13 +400,13 @@ impl Unaligned {
         self.data
             .get_first_addr(self.cursor_index())
             .map(|x| (&self.searches.0, x, false))
-            .filter(|_| self.cursor_act.is_first())
+            .filter(|_| self.dh.cursor_act.is_first())
             .iter()
             .chain(
                 self.data
                     .get_second_addr(self.cursor_index())
                     .map(|x| (&self.searches.1, x, true))
-                    .filter(|_| self.cursor_act.is_second())
+                    .filter(|_| self.dh.cursor_act.is_second())
                     .iter(),
             )
             .copied()
@@ -494,10 +492,10 @@ impl Unaligned {
     }
     /// Clears the search results of the currently active cursors
     pub fn clear_search(&mut self) {
-        if self.cursor_act.is_first() {
+        if self.dh.cursor_act.is_first() {
             self.searches.0 = None
         }
-        if self.cursor_act.is_second() {
+        if self.dh.cursor_act.is_second() {
             self.searches.1 = None
         }
     }
@@ -511,7 +509,7 @@ impl Unaligned {
         Option<(SearchContext, FileContent)>,
     ) {
         let is_running = Arc::new(AtomicBool::new(true));
-        match self.cursor_act {
+        match self.dh.cursor_act {
             CursorActive::None | CursorActive::Both => {
                 self.searches.0 = Some(SearchResults::new(query.clone()));
                 self.searches.1 = Some(SearchResults::new(query.clone()));
@@ -566,7 +564,7 @@ impl Unaligned {
     }
     /// Returns the active search query for one of the currently cursors
     pub fn current_search_query(&self) -> Option<&Query> {
-        if self.cursor_act.is_first() {
+        if self.dh.cursor_act.is_first() {
             [&self.searches.0, &self.searches.1]
         } else {
             [&self.searches.1, &self.searches.0]

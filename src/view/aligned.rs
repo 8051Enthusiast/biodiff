@@ -72,6 +72,12 @@ impl Aligned {
         let self_range = self.index..self.index + (self.dh.cursor.get_size()) as isize;
         !(self_range.start >= range.end || self_range.end <= range.start)
     }
+    /// changes the active cursor to be cursor_act and moves back into bounds if the active cursor is outside bounds
+    fn change_active_cursor<B: Backend>(&mut self, printer: &mut B, cursor_act: CursorActive) {
+        self.dh.cursor_act = cursor_act;
+        self.set_cursor(printer, cursor_act);
+        printer.refresh()
+    }
     /// returns the search results visible in the current view
     fn search_ranges(&self) -> [Vec<(usize, usize)>; 2] {
         let intersect_range =
@@ -212,7 +218,7 @@ impl Aligned {
             let content = self.get_content();
             self.dh
                 .print_doublehex_scrolled(&content, printer, scroll_amount);
-            self.set_cursor(printer, CursorActive::Both);
+            self.set_cursor(printer, self.dh.cursor_act);
             if scroll_amount != 0 {
                 self.print_bars(printer);
             }
@@ -250,7 +256,7 @@ impl Aligned {
         }
         let content = self.get_content();
         self.dh.print_doublehex_screen(&content, printer);
-        self.set_cursor(printer, CursorActive::Both);
+        self.set_cursor(printer, self.dh.cursor_act);
         self.print_bars(printer);
         printer.refresh();
     }
@@ -455,6 +461,9 @@ impl Aligned {
             Action::Bottom => self.jump_end(printer),
             Action::NextSearch => self.jump_next_search_result(printer),
             Action::PrevSearch => self.jump_prev_search_result(printer),
+            Action::CursorFirst => self.change_active_cursor(printer, CursorActive::First),
+            Action::CursorBoth => self.change_active_cursor(printer, CursorActive::Both),
+            Action::CursorSecond => self.change_active_cursor(printer, CursorActive::Second),
             Action::AddColumn => self.add_column(printer),
             Action::RemoveColumn => self.remove_column(printer),
             Action::AutoColumn => self.auto_column(printer),

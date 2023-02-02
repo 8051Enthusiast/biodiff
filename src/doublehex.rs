@@ -101,6 +101,7 @@ impl DoubleHexLine {
 pub struct DoubleHexContext {
     pub cursor: CursorState,
     pub style: Style,
+    pub cursor_act: CursorActive,
 }
 
 impl DoubleHexContext {
@@ -110,6 +111,7 @@ impl DoubleHexContext {
         DoubleHexContext {
             cursor,
             style: Style::default(),
+            cursor_act: CursorActive::Both,
         }
     }
     /// width of a screen half when in horizontal split
