@@ -168,8 +168,8 @@ impl CursorState {
     /// returns Some(amount of rows) if the difference given as argument
     /// is a multiple of the number of columns, otherwise None
     pub fn full_row_move(&self, diff: isize) -> Option<isize> {
-        if diff % self.size.0 as isize == 0 {
-            Some(diff / self.size.0 as isize)
+        if diff % self.bytes_per_row as isize == 0 {
+            Some(diff / self.bytes_per_row as isize)
         } else {
             None
         }
