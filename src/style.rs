@@ -41,6 +41,16 @@ pub fn disp_addr(maddr: Option<usize>, digits: u8) -> String {
 
 /// Formats the addresses that get displayed on the lower right of the screen
 pub fn disp_bottom_addr(addresses: (Option<usize>, Option<usize>), digits: u8) -> String {
+    let diff = if let (Some(a), Some(b)) = addresses {
+        let d = (b as isize).wrapping_sub(a as isize);
+        if d < 0 {
+            format!("(-{:0digits$x})", -d, digits = digits as usize)
+        } else {
+            format!("(+{:0digits$x})", d, digits = digits as usize)
+        }
+    } else {
+        format!("  {:digits$} ", " ", digits = digits as usize)
+    };
     let addr = |a| {
         if let Some(x) = a {
             format!("{:0digits$x}", x, digits = digits as usize)
@@ -48,7 +58,7 @@ pub fn disp_bottom_addr(addresses: (Option<usize>, Option<usize>), digits: u8) -
             format!("{:digits$}", " ", digits = digits as usize)
         }
     };
-    format!(" {}|{}", addr(addresses.0), addr(addresses.1))
+    format!(" {}|{}{diff}", addr(addresses.0), addr(addresses.1))
 }
 
 /// Contains two hex digits of a byte and a space behind it, or just three spaces for None
