@@ -2,8 +2,8 @@
 name: Build
 on:
   push:
-    branches:
-      - main
+    tags:
+      - v[0-9]+.*
 jobs:
   build:
     name: Build Binary
@@ -13,12 +13,13 @@ jobs:
         include:
           - os: macos-latest
             target: x86_64-apple-darwin
-            suffix: ''
+            suffix: "macos"
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            suffix: ''
+            suffix: "linux"
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            suffix: "windows"
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -40,14 +41,14 @@ jobs:
       - uses: actions/upload-artifact@v2
         if: matrix.os != 'windows-latest'
         with:
-          name: 'biodiff-${{ matrix.os }}'
+          name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
           path: |
             target/release/biodiff
             target/release/git-biodiff
       - uses: actions/upload-artifact@v2
         if: matrix.os == 'windows-latest'
         with:
-          name: 'biodiff-${{ matrix.os }}'
+          name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
           path: |
             target/release/biodiff.exe
             target/release/git-biodiff.exe
