@@ -6,7 +6,6 @@ use unicode_width::UnicodeWidthStr;
 use crate::backend::{Color, Effect};
 pub const FRONT_PAD: &str = " ";
 pub const MIDDLE_PAD: &str = " |";
-pub const ADDR_SIZE: usize = 10;
 pub const SPACER_PERIOD: usize = 8;
 
 #[derive(Debug, Clone, Copy)]
@@ -28,25 +27,28 @@ pub fn byte(data: Option<ByteData>) -> Option<u8> {
     data.map(|x| x.byte)
 }
 
-/// Contains 8 digits of an address, with a space in between and at the front and end
-pub fn disp_addr(maddr: Option<usize>) -> String {
+/// Contains `digits` digits of an address, with a space at the end
+pub fn disp_addr(maddr: Option<usize>, digits: u8) -> String {
     match maddr {
         Some(addr) => {
-            let lo = addr & 0xffff;
-            let hi = (addr >> 16) & 0xffff;
-            format!("{hi:04x} {lo:04x} ")
+            format!("{addr:0width$x} ", width = digits as usize)
         }
-        None => String::from("          "),
+        None => {
+            format!("{:width$} ", " ", width = digits as usize)
+        }
     }
 }
 
 /// Formats the addresses that get displayed on the lower right of the screen
-pub fn disp_bottom_addr(addresses: (Option<usize>, Option<usize>)) -> String {
-    let formatted = |addr: Option<usize>| {
-        addr.map(|x| format!("{x:08x}"))
-            .unwrap_or_else(|| String::from("        "))
+pub fn disp_bottom_addr(addresses: (Option<usize>, Option<usize>), digits: u8) -> String {
+    let addr = |a| {
+        if let Some(x) = a {
+            format!("{:0digits$x}", x, digits = digits as usize)
+        } else {
+            format!("{:digits$}", " ", digits = digits as usize)
+        }
     };
-    format!(" {}|{} ", formatted(addresses.0), formatted(addresses.1))
+    format!(" {}|{}", addr(addresses.0), addr(addresses.1))
 }
 
 /// Contains two hex digits of a byte and a space behind it, or just three spaces for None
@@ -267,13 +269,17 @@ pub struct Style {
     pub vertical: bool,
     pub spacer: bool,
     pub right_to_left: bool,
-    #[serde(skip)]
     pub column_count: ColumnSetting,
+    #[serde(skip)]
+    pub addr_width: u8,
 }
 
 impl Style {
     fn size_per_byte(&self) -> usize {
         self.mode.size_per_byte() + self.ascii_col as usize + self.bars_col as usize
+    }
+    pub fn addr_size(&self) -> usize {
+        self.addr_width as usize + 1
     }
     /// width of n columns
     ///
@@ -301,7 +307,7 @@ impl Style {
     /// physical column of the start of the ascii column, if it exists
     pub fn ascii_start(&self, n: usize) -> Option<usize> {
         if self.ascii_col {
-            Some(ADDR_SIZE + FRONT_PAD.width() + self.n_column_width(n) + MIDDLE_PAD.width())
+            Some(self.addr_size() + FRONT_PAD.width() + self.n_column_width(n) + MIDDLE_PAD.width())
         } else {
             None
         }
@@ -318,7 +324,7 @@ impl Style {
     pub fn bars_start(&self, n: usize) -> Option<usize> {
         if self.bars_col {
             Some(
-                ADDR_SIZE
+                self.addr_size()
                     + FRONT_PAD.width()
                     + self.n_column_width(n)
                     + self.ascii_width(n)
@@ -330,7 +336,7 @@ impl Style {
     }
     /// width of one of the two hex screens
     pub fn half_width(&self, n: usize) -> usize {
-        ADDR_SIZE
+        self.addr_size()
             + FRONT_PAD.width()
             + self.ascii_width(n)
             + self.bars_width(n)
@@ -340,12 +346,16 @@ impl Style {
     pub fn nth_column_pos(&self, n: usize) -> usize {
         self.mode.size_per_byte() * n
             + if self.spacer { n / SPACER_PERIOD } else { 0 }
-            + if self.right_to_left { 0 } else { ADDR_SIZE }
+            + if self.right_to_left {
+                0
+            } else {
+                self.addr_size()
+            }
             + FRONT_PAD.width()
     }
     /// the amount of characters that are on a line regardless of column number
     fn const_overhead(&self) -> usize {
-        let single_overhead = ADDR_SIZE
+        let single_overhead = self.addr_size()
             + FRONT_PAD.width()
             + if self.ascii_col {
                 MIDDLE_PAD.width()
@@ -422,6 +432,7 @@ impl Default for Style {
             spacer: false,
             right_to_left: false,
             column_count: ColumnSetting::Fit,
+            addr_width: 0,
         }
     }
 }

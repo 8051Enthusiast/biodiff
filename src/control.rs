@@ -37,6 +37,8 @@ type CursiveCallback = Box<dyn Fn(&mut Cursive) + 'static + Send>;
 /// However, this was fixed by using cursive_buffered_backend, so now this is only a minor optimization.
 pub fn run(x: FileState, y: FileState) {
     let mut settings = Settings::from_config().unwrap_or_default();
+    let digits = x.address_digits().max(y.address_digits());
+    settings.style.addr_width = digits;
     let mut hv = HexView::new(x, y);
     loop {
         *match hv {

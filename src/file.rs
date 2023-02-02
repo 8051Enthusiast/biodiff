@@ -52,4 +52,9 @@ impl FileState {
             search: None,
         })
     }
+    /// gets the number of digits used to represent the file addresses
+    /// (rounded up to be in pairs
+    pub fn address_digits(&self) -> u8 {
+        ((self.content.len() - 1).max(1).ilog2() / 8 + 1) as u8 * 2
+    }
 }

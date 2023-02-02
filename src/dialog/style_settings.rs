@@ -44,6 +44,10 @@ fn apply_style(siv: &mut Cursive) {
             .selected_id()
             .expect("Display mode select view appears to be empty"),
     );
+    let settings = siv
+        .user_data::<Settings>()
+        .expect("Could not get align algorithm info from cursive");
+    let addr_width = settings.style.addr_width;
     let new_style = Style {
         mode,
         ascii_col,
@@ -52,10 +56,9 @@ fn apply_style(siv: &mut Cursive) {
         spacer,
         right_to_left,
         column_count,
+        addr_width,
     };
-    siv.user_data::<Settings>()
-        .expect("Could not get align algorithm info from cursive")
-        .style = new_style;
+    settings.style = new_style;
     on_hexview(
         siv,
         move |v| v.dh.style = new_style,

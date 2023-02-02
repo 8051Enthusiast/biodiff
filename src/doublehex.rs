@@ -5,7 +5,7 @@ use crate::{
     cursor::{CursorActive, CursorState},
     style::{
         byte, byte_effect, disp_addr, disp_ascii, disp_bottom_addr, disp_column_blocks, ByteData,
-        ColumnSetting, Style, ADDR_SIZE, FRONT_PAD, MIDDLE_PAD,
+        ColumnSetting, Style, FRONT_PAD, MIDDLE_PAD,
     },
     util::autocorrelation,
 };
@@ -40,7 +40,11 @@ impl DoubleHexLine {
             *target = if first { (*a, *b) } else { (*b, *a) }
         }
         if !style.right_to_left {
-            printer.append_text(&disp_addr(address), Color::Unimportant, Effect::None);
+            printer.append_text(
+                &disp_addr(address, style.addr_width),
+                Color::Unimportant,
+                Effect::None,
+            );
         }
         let width = self.bytes.len();
         for (i, (a, b)) in bytes.iter().enumerate() {
@@ -53,7 +57,11 @@ impl DoubleHexLine {
             }
         }
         if style.right_to_left {
-            printer.append_text(&disp_addr(address), Color::Unimportant, Effect::None);
+            printer.append_text(
+                &disp_addr(address, style.addr_width),
+                Color::Unimportant,
+                Effect::None,
+            );
         }
         for col_disp in [
             (style.ascii_col, disp_ascii as fn(_) -> _),
@@ -300,7 +308,7 @@ impl DoubleHexContext {
         }
 
         // status bar address
-        let addr_print = disp_bottom_addr(cursor_addr);
+        let addr_print = disp_bottom_addr(cursor_addr, self.style.addr_width);
         if self.style.right_to_left {
             backend.set_pos(0, self.full_height() - 1);
         } else {
@@ -320,13 +328,16 @@ impl DoubleHexContext {
         first: &str,
         second: &str,
     ) {
+        let namewidth = self.hor_half_width().saturating_sub(title.width() + 2);
         // function for truncating the string on the left when it is too long
         // also inserts an < to indicate that it was truncated
         let shorten = |s: &str| -> String {
-            if s.len() > self.style.n_column_width(self.cursor.get_size_x()) {
+            if namewidth < 2 {
+                String::new()
+            } else if s.width() > namewidth {
                 s.chars()
                     .rev()
-                    .take(self.style.n_column_width(self.cursor.get_size_x()) - 2)
+                    .take(namewidth - 2)
                     .collect::<Vec<_>>()
                     .into_iter()
                     .chain(std::iter::once('<'))
@@ -336,18 +347,14 @@ impl DoubleHexContext {
                 s.to_string()
             }
         };
-        // the title is displayed above the addresses
-        let addrsize = ADDR_SIZE;
-        let short_title = title.chars().take(addrsize).collect::<String>();
         let short_first = shorten(first);
         let short_second = shorten(second);
 
-        let hexsize = self.hor_half_width() - ADDR_SIZE - 2;
         let format_title = |text| {
             if self.style.right_to_left {
-                format!("{text:<hexsize$} {short_title:addrsize$} ")
+                format!("{text:<namewidth$} {title} ")
             } else {
-                format!("{short_title:addrsize$} {text:>hexsize$} ")
+                format!("{title} {text:>namewidth$} ")
             }
         };
         let first_title = format_title(short_first);
@@ -370,7 +377,7 @@ impl DoubleHexContext {
     ) {
         const BOTTOM_TEXT: &str =
             "F1/1: Help   F2: Unalign  F3: Align    F4: Settings F6: Goto     F7: Search ";
-        let print_addr = disp_bottom_addr(addresses);
+        let print_addr = disp_bottom_addr(addresses, self.style.addr_width);
         let info_width = self.full_width().saturating_sub(print_addr.chars().count());
         let bottom_text = BOTTOM_TEXT.chars().take(info_width).collect::<String>();
         let info_text = if self.style.right_to_left {
