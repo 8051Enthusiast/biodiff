@@ -1,7 +1,4 @@
-use std::{
-    ops::Range,
-    sync::{atomic::AtomicBool, mpsc::Sender, Arc},
-};
+use std::{ops::Range, sync::mpsc::Sender};
 
 use cursive::{Vec2, View};
 
@@ -12,11 +9,11 @@ use crate::{
     datastruct::{DoubleVec, SignedArray},
     doublehex::{DoubleHexContext, DoubleHexLine},
     file::{FileContent, FileState},
-    search::{Query, SearchContext, SearchResults},
+    search::{Query, SearchContext, SearchPair, SearchResults},
     style::{ByteData, ColumnSetting},
 };
 
-use super::{is_next_search_result, next_difference};
+use super::next_difference;
 /// Enum that containts events but also allows
 /// messages for appending/prepending data to the Aligned view.
 pub enum AlignedMessage {
@@ -35,7 +32,7 @@ impl From<Action> for AlignedMessage {
 pub struct Aligned {
     data: DoubleVec<AlignElement>,
     filenames: (String, String),
-    searches: (Option<SearchResults>, Option<SearchResults>),
+    searches: SearchPair,
     original: (FileContent, FileContent),
     index: isize,
     pub dh: DoubleHexContext,
@@ -62,7 +59,7 @@ impl Aligned {
             data,
             filenames: (first.name, second.name),
             original: (first.content, second.content),
-            searches: (first.search, second.search),
+            searches: SearchPair(first.search, second.search),
             index,
             dh,
         }
@@ -78,40 +75,9 @@ impl Aligned {
         self.set_cursor(printer, cursor_act);
         printer.refresh()
     }
-    /// returns the search results visible in the current view
-    fn search_ranges(&self) -> [Vec<(usize, usize)>; 2] {
-        let intersect_range =
-            |a: Range<isize>, b: Range<isize>| a.start.max(b.start)..a.end.min(b.end);
-        let view_bounds = intersect_range(
-            self.data.bounds(),
-            self.index..self.index + self.dh.cursor.get_size() as isize,
-        );
-        let starts = self.data.get(view_bounds.start).map(|x| [x.xaddr, x.yaddr]);
-        let ends = self
-            .data
-            .get(view_bounds.end - 1)
-            .map(|x| [x.xaddr, x.yaddr]);
-        if let ((Some(search1), Some(search2)), Some(starts), Some(ends)) =
-            (&self.searches, starts, ends)
-        {
-            let ret: Vec<Vec<(usize, usize)>> = [search1, search2]
-                .iter()
-                .zip(starts.iter().zip(ends))
-                .map(|(search, (start, end))| {
-                    search.lookup_results(*start..end + 1).into_iter().collect()
-                })
-                .collect();
-            [ret[0].clone(), ret[1].clone()]
-        } else {
-            [vec![], vec![]]
-        }
-    }
     /// Gets a useful form of the information contained in the alignement data for printing.
     fn get_content(&self) -> Vec<DoubleHexLine> {
         let mut content = Vec::new();
-        let [first_range, second_range] = self.search_ranges();
-        let mut next_first = first_range.into_iter().peekable();
-        let mut next_second = second_range.into_iter().peekable();
         for x in 0..self.dh.cursor.get_size_y() {
             // address of current line to be converted
             let base_addr = (x * self.dh.cursor.bytes_per_row()) as isize + self.index;
@@ -127,8 +93,9 @@ impl Aligned {
                         continue;
                     }
                 };
-                let is_first_result = is_next_search_result(&mut next_first, malignel.xaddr);
-                let is_second_result = is_next_search_result(&mut next_second, malignel.yaddr);
+                let [is_first_result, is_second_result] = self
+                    .searches
+                    .is_in_result([malignel.xaddr, malignel.yaddr].map(Some));
                 let first = ByteData::maybe_new(malignel.xbyte, is_first_result);
                 let second = ByteData::maybe_new(malignel.ybyte, is_second_result);
                 bytes.push((first, second));
@@ -297,19 +264,36 @@ impl Aligned {
             .get(self.cursor_index())
             .map(|x| [x.xaddr, x.yaddr])
     }
-    /// Jump to the next search result on either active cursor after the current index
-    pub fn jump_next_search_result<B: Backend>(&mut self, printer: &mut B) {
+    /// get the search results and positions of all active cursors
+    fn search_data(&self, forward: bool) -> Vec<(&Option<SearchResults>, usize, bool)> {
         let [first, second] = self
             .current_cursor_addresses()
-            .or_else(|| self.data.first().map(|x| [x.xaddr, x.yaddr]))
+            .or_else(|| {
+                if forward {
+                    self.data.first()
+                } else {
+                    self.data.last()
+                }
+                .map(|x| [x.xaddr, x.yaddr])
+            })
             .unwrap_or([0, 0]);
-        let next = match SearchResults::nearest_next_result(
-            &[
-                (&self.searches.0, first, false),
-                (&self.searches.1, second, true),
-            ],
-            |addr, right| self.index_address(right, addr).ok(),
-        ) {
+        Some((&self.searches.0, first, false))
+            .filter(|_| self.dh.cursor_act.is_first())
+            .iter()
+            .chain(
+                Some((&self.searches.1, second, true))
+                    .filter(|_| self.dh.cursor_act.is_second())
+                    .iter(),
+            )
+            .copied()
+            .collect()
+    }
+    /// Jump to the next search result on either active cursor after the current index
+    pub fn jump_next_search_result<B: Backend>(&mut self, printer: &mut B) {
+        let search_data = self.search_data(true);
+        let next = match SearchResults::nearest_next_result(&search_data, |addr, right| {
+            self.index_address(right, addr).ok()
+        }) {
             Some(x) => x,
             None => return,
         };
@@ -317,20 +301,10 @@ impl Aligned {
     }
     /// Jump to the previous search reult on either active cursor before the current index
     pub fn jump_prev_search_result<B: Backend>(&mut self, printer: &mut B) {
-        let [first, second] = match self
-            .current_cursor_addresses()
-            .or_else(|| self.data.last().map(|x| [x.xaddr, x.yaddr]))
-        {
-            Some(x) => x,
-            None => return,
-        };
-        let next = match SearchResults::nearest_prev_result(
-            &[
-                (&self.searches.0, first, false),
-                (&self.searches.1, second, true),
-            ],
-            |addr, right| self.index_address(right, addr).ok(),
-        ) {
+        let search_data = self.search_data(false);
+        let next = match SearchResults::nearest_prev_result(&search_data, |addr, right| {
+            self.index_address(right, addr).ok()
+        }) {
             Some(x) => x,
             None => return,
         };
@@ -384,7 +358,7 @@ impl Aligned {
     }
     /// Clears the search results of both cursors
     pub fn clear_search(&mut self) {
-        self.searches = (None, None);
+        self.searches.clear(self.dh.cursor_act)
     }
     /// Initializes the empty search results for the search query
     /// on the currently active cursors
@@ -395,27 +369,8 @@ impl Aligned {
         (SearchContext, FileContent),
         Option<(SearchContext, FileContent)>,
     ) {
-        let is_running = Arc::new(AtomicBool::new(true));
-        self.searches.0 = Some(SearchResults::new(query.clone()));
-        self.searches.1 = Some(SearchResults::new(query.clone()));
-        (
-            (
-                SearchContext {
-                    first: true,
-                    query: query.clone(),
-                    is_running: is_running.clone(),
-                },
-                self.original.0.clone(),
-            ),
-            Some((
-                SearchContext {
-                    first: false,
-                    query,
-                    is_running,
-                },
-                self.original.1.clone(),
-            )),
-        )
+        let files = [self.original.0.clone(), self.original.1.clone()];
+        self.searches.setup_search(query, self.dh.cursor_act, files)
     }
     /// Inreases the column count by one and refreshes the view
     pub fn add_column<B: Backend>(&mut self, printer: &mut B) {
@@ -476,12 +431,7 @@ impl Aligned {
     }
     /// Returns the active search query for one of the currently cursors
     pub fn current_search_query(&self) -> Option<&Query> {
-        [&self.searches.0, &self.searches.1]
-            .iter()
-            .copied()
-            .flatten()
-            .map(|x| x.query())
-            .next()
+        self.searches.current_search_query(self.dh.cursor_act)
     }
     /// Process events
     pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: AlignedMessage) {

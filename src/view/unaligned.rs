@@ -1,7 +1,4 @@
-use std::{
-    ops::Range,
-    sync::{atomic::AtomicBool, Arc},
-};
+use std::ops::Range;
 
 use cursive::{Vec2, View};
 
@@ -11,16 +8,16 @@ use crate::{
     datastruct::{CompVec, SignedArray},
     doublehex::{DoubleHexContext, DoubleHexLine},
     file::{FileContent, FileState},
-    search::{Query, SearchContext, SearchResults},
+    search::{Query, SearchContext, SearchPair, SearchResults},
     style::{ByteData, ColumnSetting},
 };
 
-use super::{is_next_search_result, next_difference};
+use super::next_difference;
 /// An unaligned view that is just two files next to each other
 pub struct Unaligned {
     pub data: CompVec,
     filenames: (String, String),
-    searches: (Option<SearchResults>, Option<SearchResults>),
+    searches: SearchPair,
     index: isize,
     pub dh: DoubleHexContext,
 }
@@ -35,7 +32,7 @@ impl Unaligned {
         Unaligned {
             data,
             filenames: (first.name, second.name),
-            searches: (first.search, second.search),
+            searches: SearchPair(first.search, second.search),
             index,
             dh,
         }
@@ -89,47 +86,9 @@ impl Unaligned {
         self.set_cursor(printer, cursor_act);
         printer.refresh()
     }
-    /// returns the search results visible in the current view
-    fn search_ranges(&self) -> [Vec<(isize, isize)>; 2] {
-        let intersect_range =
-            |a: Range<isize>, b: Range<isize>| a.start.max(b.start)..a.end.min(b.end);
-        let view_range = self.index..self.index + self.dh.cursor.get_size() as isize;
-        let first_range = intersect_range(self.data.first_bound(), view_range.clone());
-        let second_range = intersect_range(self.data.second_bound(), view_range);
-        let first_start = self.data.get_first_addr(first_range.start);
-        let first_end = self.data.get_first_addr(first_range.end - 1);
-        let second_start = self.data.get_second_addr(second_range.start);
-        let second_end = self.data.get_second_addr(second_range.end - 1);
-        let first = if let (Some(start), Some(end), Some(search)) =
-            (first_start, first_end, &self.searches.0)
-        {
-            search
-                .lookup_results(start..end + 1)
-                .into_iter()
-                .map(|(a, b)| (a as isize, b as isize))
-                .collect()
-        } else {
-            vec![]
-        };
-        let second = if let (Some(start), Some(end), Some(search)) =
-            (second_start, second_end, &self.searches.1)
-        {
-            search
-                .lookup_results(start..end + 1)
-                .into_iter()
-                .map(|(a, b)| (self.data.shift + a as isize, self.data.shift + b as isize))
-                .collect()
-        } else {
-            vec![]
-        };
-        [first, second]
-    }
     /// Converts the content of the CompVec into DoubleHexLines so they can be displayed
     fn get_content(&self) -> Vec<DoubleHexLine> {
         let mut content = Vec::new();
-        let [first_range, second_range] = self.search_ranges();
-        let mut next_first = first_range.into_iter().peekable();
-        let mut next_second = second_range.into_iter().peekable();
         for x in 0..self.dh.cursor.get_size_y() {
             // address of the nth line
             let base_addr = (x * self.dh.cursor.bytes_per_row()) as isize + self.index;
@@ -144,17 +103,19 @@ impl Unaligned {
                 .into_iter()
                 .enumerate()
             {
-                let current_addr = base_addr + i as isize;
-                let [first_is_result, second_is_result] = [&mut next_first, &mut next_second]
-                    .map(|x| is_next_search_result(x, current_addr));
+                let current_index = base_addr + i as isize;
+                let [is_first_result, is_second_result] = self.searches.is_in_result([
+                    self.data.get_first_addr(current_index),
+                    self.data.get_second_addr(current_index),
+                ]);
                 bytes.push((
                     byte_a.map(|byte| ByteData {
                         byte,
-                        is_search_result: first_is_result,
+                        is_search_result: is_first_result,
                     }),
                     byte_b.map(|byte| ByteData {
                         byte,
-                        is_search_result: second_is_result,
+                        is_search_result: is_second_result,
                     }),
                 ));
             }
@@ -492,12 +453,7 @@ impl Unaligned {
     }
     /// Clears the search results of the currently active cursors
     pub fn clear_search(&mut self) {
-        if self.dh.cursor_act.is_first() {
-            self.searches.0 = None
-        }
-        if self.dh.cursor_act.is_second() {
-            self.searches.1 = None
-        }
+        self.searches.clear(self.dh.cursor_act)
     }
     /// Initializes the empty search results for the search query
     /// on the currently active cursors
@@ -508,72 +464,13 @@ impl Unaligned {
         (SearchContext, FileContent),
         Option<(SearchContext, FileContent)>,
     ) {
-        let is_running = Arc::new(AtomicBool::new(true));
-        match self.dh.cursor_act {
-            CursorActive::None | CursorActive::Both => {
-                self.searches.0 = Some(SearchResults::new(query.clone()));
-                self.searches.1 = Some(SearchResults::new(query.clone()));
-                (
-                    (
-                        SearchContext {
-                            first: true,
-                            query: query.clone(),
-                            is_running: is_running.clone(),
-                        },
-                        self.data.get_data().0,
-                    ),
-                    Some((
-                        SearchContext {
-                            first: false,
-                            query,
-                            is_running,
-                        },
-                        self.data.get_data().1,
-                    )),
-                )
-            }
-            CursorActive::First => {
-                self.searches.0 = Some(SearchResults::new(query.clone()));
-                (
-                    (
-                        SearchContext {
-                            first: true,
-                            query,
-                            is_running,
-                        },
-                        self.data.get_data().0,
-                    ),
-                    None,
-                )
-            }
-            CursorActive::Second => {
-                self.searches.1 = Some(SearchResults::new(query.clone()));
-                (
-                    (
-                        SearchContext {
-                            first: false,
-                            query,
-                            is_running,
-                        },
-                        self.data.get_data().1,
-                    ),
-                    None,
-                )
-            }
-        }
+        let (first, second) = self.data.get_data();
+        self.searches
+            .setup_search(query, self.dh.cursor_act, [first, second])
     }
     /// Returns the active search query for one of the currently cursors
     pub fn current_search_query(&self) -> Option<&Query> {
-        if self.dh.cursor_act.is_first() {
-            [&self.searches.0, &self.searches.1]
-        } else {
-            [&self.searches.1, &self.searches.0]
-        }
-        .iter()
-        .copied()
-        .flatten()
-        .map(|x| x.query())
-        .next()
+        self.searches.current_search_query(self.dh.cursor_act)
     }
     /// Turns the view into most of its parts
     pub fn destruct(self) -> Result<(FileState, FileState, DoubleHexContext), Self> {

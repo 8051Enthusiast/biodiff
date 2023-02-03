@@ -1,10 +1,10 @@
-use std::collections::BTreeSet;
 use std::ops::Range;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::BTreeMap, sync::Arc};
 
 use regex::bytes::{Regex, RegexBuilder};
 
+use crate::cursor::CursorActive;
 use crate::file::FileContent;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -115,14 +115,6 @@ impl SearchResults {
         self.starts.insert(range.start, range.end);
         self.ends.insert(range.end, range.start);
     }
-    /// lookup results intersecting with a given range
-    pub fn lookup_results(&self, range: Range<usize>) -> BTreeSet<(usize, usize)> {
-        let mut set = BTreeSet::new();
-        // union of all results start start within the range and end within the range
-        set.extend(self.starts.range(range.clone()).map(|x| (*x.0, *x.1)));
-        set.extend(self.ends.range(range).map(|x| (*x.1, *x.0)));
-        set
-    }
     /// calculates whether the given address is inside a result
     pub fn is_in_result(&self, addr: Option<usize>) -> bool {
         let addr = match addr {
@@ -209,6 +201,101 @@ impl SearchResults {
             })
             .min()?;
         Some(unwrap_both(next).0)
+    }
+}
+
+pub struct SearchPair(pub Option<SearchResults>, pub Option<SearchResults>);
+
+impl SearchPair {
+    pub fn is_in_result(&self, addr: [Option<usize>; 2]) -> [bool; 2] {
+        [(&self.0, addr[0]), (&self.1, addr[1])]
+            .map(|(x, addr)| x.as_ref().map_or(false, |y| y.is_in_result(addr)))
+    }
+    pub fn clear(&mut self, cursor_act: CursorActive) {
+        if cursor_act.is_first() {
+            self.0 = None;
+        }
+        if cursor_act.is_second() {
+            self.1 = None;
+        }
+    }
+    pub fn current_search_query(&self, cursor_act: CursorActive) -> Option<&Query> {
+        if cursor_act.is_first() {
+            [&self.0, &self.1]
+        } else {
+            [&self.1, &self.0]
+        }
+        .iter()
+        .copied()
+        .flatten()
+        .map(|x| x.query())
+        .next()
+    }
+    /// Initializes the empty search results for the search query
+    /// on the currently active cursors
+    pub fn setup_search(
+        &mut self,
+        query: Query,
+        cursor_act: CursorActive,
+        files: [FileContent; 2],
+    ) -> (
+        (SearchContext, FileContent),
+        Option<(SearchContext, FileContent)>,
+    ) {
+        let [ffirst, fsecond] = files;
+        let is_running = Arc::new(AtomicBool::new(true));
+        match cursor_act {
+            CursorActive::None | CursorActive::Both => {
+                self.0 = Some(SearchResults::new(query.clone()));
+                self.1 = Some(SearchResults::new(query.clone()));
+                (
+                    (
+                        SearchContext {
+                            first: true,
+                            query: query.clone(),
+                            is_running: is_running.clone(),
+                        },
+                        ffirst,
+                    ),
+                    Some((
+                        SearchContext {
+                            first: false,
+                            query,
+                            is_running,
+                        },
+                        fsecond,
+                    )),
+                )
+            }
+            CursorActive::First => {
+                self.0 = Some(SearchResults::new(query.clone()));
+                (
+                    (
+                        SearchContext {
+                            first: true,
+                            query,
+                            is_running,
+                        },
+                        ffirst,
+                    ),
+                    None,
+                )
+            }
+            CursorActive::Second => {
+                self.1 = Some(SearchResults::new(query.clone()));
+                (
+                    (
+                        SearchContext {
+                            first: false,
+                            query,
+                            is_running,
+                        },
+                        fsecond,
+                    ),
+                    None,
+                )
+            }
+        }
     }
 }
 
