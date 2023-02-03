@@ -1,7 +1,7 @@
 use memmap2::{Mmap, MmapOptions};
 use std::{ffi::OsStr, fs::File, io::Read, ops::Deref, sync::Arc};
 
-use crate::search::SearchResults;
+use crate::{search::SearchResults, util::ilog2};
 
 pub type FileContent = Arc<MaybeMapped>;
 
@@ -55,6 +55,6 @@ impl FileState {
     /// gets the number of digits used to represent the file addresses
     /// (rounded up to be in pairs
     pub fn address_digits(&self) -> u8 {
-        ((self.content.len() - 1).max(1).ilog2() / 8 + 1) as u8 * 2
+        (ilog2((self.content.len() - 1).max(1)) / 8 + 1) as u8 * 2
     }
 }
