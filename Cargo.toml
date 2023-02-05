@@ -13,6 +13,7 @@ default-run = "biodiff"
 [workspace]
 members = [
 	"hexagex",
+	"biodiff-wfa2-sys",
 ]
 
 [dependencies]
@@ -27,6 +28,7 @@ serde_json = "1.0.91"
 dirs = "4.0.0"
 regex = "1.7.1"
 hexagex = { path = "hexagex", version = "0.2.2" }
+wfa2-sys = { path = "biodiff-wfa2-sys", version = "0.1.0" }
 realfft = "3.2.0"
 num_cpus = "1.15.0"
 
