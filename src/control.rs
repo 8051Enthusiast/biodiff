@@ -12,7 +12,7 @@ use cursive::{traits::Resizable, views::ResizedView, Cursive};
 use cursive_buffered_backend::BufferedBackend;
 
 use crate::{
-    align::{AlignAlgorithm, AlignMode},
+    align::{AlignInfo, AlignMode},
     backend::{send_cross_actions, Action, Cross, Dummy},
     config::{Config, Settings},
     cursor::CursorState,
@@ -88,7 +88,7 @@ impl HexView {
         ))
     }
     /// Turns a hexview into an aligned view using the given algorithm parameters
-    fn into_aligned(self, algo: &AlignAlgorithm, select: [Option<Range<usize>>; 2]) -> HexView {
+    fn into_aligned(self, algo: &AlignInfo, select: [Option<Range<usize>>; 2]) -> HexView {
         let (send, recv) = channel();
         match match self {
             // first destruct our old hexview into its parts
@@ -101,7 +101,9 @@ impl HexView {
             // maybe one could think up some better values to align at here or something
             Err(hv) => hv,
             Ok((left, right, mut dh)) => {
-                if algo.mode == AlignMode::Global {
+                if select[0].is_some() == select[1].is_some()
+                    && algo.global.mode == AlignMode::Global
+                {
                     dh.cursor = CursorState::new((dh.cursor.get_size_x(), dh.cursor.get_size_y()))
                 };
                 HexView::Aligned(
@@ -160,12 +162,8 @@ impl HexView {
                 DelegateEvent::SwitchToAlign => {
                     quit = None;
                     let select = view.selection();
-                    let algo = if select[0].is_some() ^ select[1].is_some() {
-                        settings.presets.current_semiglobal()
-                    } else {
-                        settings.presets.current_global()
-                    };
-                    view.into_aligned(algo, select)
+                    let align_info = &settings.presets.current_info();
+                    view.into_aligned(align_info, select)
                 }
                 DelegateEvent::SwitchToUnalign => {
                     quit = None;

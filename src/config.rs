@@ -112,9 +112,9 @@ impl From<ConfigV0> for ConfigV1 {
     fn from(s: ConfigV0) -> Self {
         let mut presets = PresetList::default();
         presets.global.insert(0, s.algo.into());
-        presets
-            .semiglobal
-            .insert(0, AlignAlgorithm::default_semiglobal());
+        let mut semiglobal: AlignAlgorithm = s.algo.into();
+        semiglobal.mode = AlignMode::Semiglobal;
+        presets.semiglobal.insert(0, semiglobal);
         ConfigV1 {
             presets,
             style: s.style.into(),

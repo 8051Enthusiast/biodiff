@@ -1,8 +1,9 @@
 use cursive::direction::Direction;
 
 use crate::{
+    align::AlgorithmKind,
     config::Settings,
-    preset::{AlgorithmKind, PresetCursor, PresetList},
+    preset::{PresetCursor, PresetList},
 };
 
 use super::*;

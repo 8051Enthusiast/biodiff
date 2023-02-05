@@ -1,10 +1,9 @@
 use crate::{
     align::{
-        rustbio::{RustBio, DEFAULT_KMER, DEFAULT_WINDOW},
-        AlignBackend,
+        rustbio::{RustBio, DEFAULT_KMER, DEFAULT_WINDOW}, wfa2::Wfa2, AlgorithmKind, AlignBackend
     },
     config::Settings,
-    preset::{AlgorithmKind, PresetCursor},
+    preset::PresetCursor,
 };
 
 use self::algorithm_presets::refresh_presets;
@@ -12,7 +11,8 @@ use self::algorithm_presets::refresh_presets;
 use super::*;
 const TEXT_WIDTH: usize = 10;
 
-fn apply_rustbio(siv: &mut Cursive, rustbio: &mut RustBio, errors: &mut String) {
+fn apply_rustbio(siv: &mut Cursive, algo: &mut AlignAlgorithm, errors: &mut String) {
+    let mut rustbio = RustBio::default();
     // read band settings
     if siv
         .call_on_name("banded", |v: &mut Checkbox| v.is_checked())
@@ -25,13 +25,46 @@ fn apply_rustbio(siv: &mut Cursive, rustbio: &mut RustBio, errors: &mut String) 
     } else {
         rustbio.band = Banded::Normal;
     }
+    algo.backend = AlignBackend::RustBio(rustbio);
+}
+
+fn apply_wfa2(_: &mut Cursive, algo: &mut AlignAlgorithm, errors: &mut String) {
+    let wfa2 = Wfa2;
+    algo.backend = AlignBackend::Wfa2(wfa2);
+    if algo.mode == AlignMode::Semiglobal && algo.match_score != 0 {
+        errors.push_str("WFA2 does not support semiglobal alignment with non-zero match score\n");
+    }
 }
 
 /// Reads the algorithm settings from the algorithm dialog box and applies it
 /// onto the AlignAlgorithm stored in the user data.
-fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {
+fn apply_algorithm(
+    siv: &mut Cursive,
+    cursor: PresetCursor,
+    backend_radio: RadioGroup<&'static str>,
+) {
     let mut algorithm = AlignAlgorithm::default();
     let mut errors = String::new();
+    let mut radio_is_selected = |s| {
+        siv.call_on_name(s, |v: &mut RadioButton<String>| v.is_selected())
+            .unwrap()
+    };
+
+
+    // read mode settings
+    if cursor.kind == AlgorithmKind::Global {
+        if radio_is_selected("global radio") {
+            algorithm.mode = AlignMode::Global
+        } else if radio_is_selected("blockwise radio") {
+            let mut blocksize = DEFAULT_BLOCKSIZE;
+            parse_box(siv, "block size", &mut blocksize, &mut errors);
+            algorithm.mode = AlignMode::Blockwise(blocksize)
+        } else {
+            errors.push_str("Could not find any enabled mode radio button\n")
+        }
+    } else {
+        algorithm.mode = AlignMode::Semiglobal;
+    }
 
     // read common variables
     parse_box(siv, "name", &mut algorithm.name, &mut errors);
@@ -55,28 +88,11 @@ fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {
     );
     parse_box(siv, "match score", &mut algorithm.match_score, &mut errors);
 
-    let AlignBackend::RustBio(rustbio) = &mut algorithm.backend;
-    apply_rustbio(siv, rustbio, &mut errors);
-    let mut radio_is_selected = |s| {
-        siv.call_on_name(s, |v: &mut RadioButton<String>| v.is_selected())
-            .unwrap()
-    };
-
-    // read mode settings
-    if cursor.kind == AlgorithmKind::Global {
-        if radio_is_selected("global radio") {
-            algorithm.mode = AlignMode::Global
-        } else if radio_is_selected("blockwise radio") {
-            let mut blocksize = DEFAULT_BLOCKSIZE;
-            parse_box(siv, "block size", &mut blocksize, &mut errors);
-            algorithm.mode = AlignMode::Blockwise(blocksize)
-        } else {
-            errors.push_str("Could not find any enabled mode radio button\n")
-        }
-    } else {
-        algorithm.mode = AlignMode::Semiglobal;
+    match *backend_radio.selection() {
+        "rustbio" => apply_rustbio(siv, &mut algorithm, &mut errors),
+        "wfa2" => apply_wfa2(siv, &mut algorithm, &mut errors),
+        _ => errors.push_str("Unknown backend selected\n"),
     }
-
     if !errors.is_empty() {
         siv.add_layer(
             Dialog::text(format!("Error(s) occured:\n{errors}"))
@@ -107,7 +123,7 @@ fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {
     close_top_maybe_quit(siv)
 }
 
-fn rustbio_settings(rustbio: RustBio) -> impl View {
+fn rustbio_settings(rustbio: RustBio) -> LinearLayout {
     let mut layout = LinearLayout::vertical();
     let is_usize = |s: &str| s.parse::<usize>().is_ok();
     layout.add_child(
@@ -159,12 +175,39 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
     let is_nonpos_i32 = |s: &str| s.parse::<i32>().map_or(false, |x| x <= 0);
     let is_usize = |s: &str| s.parse::<usize>().is_ok();
 
+    let mut backend_radio = RadioGroup::new().on_change(|siv, item: &&str| {
+        siv.call_on_name("rustbio settings", |v: &mut HideableView<LinearLayout>| {
+            v.set_visible(*item == "rustbio")
+        });
+    });
+
+    let backends = LinearLayout::vertical()
+        .child(
+            backend_radio
+                .button("rustbio", "rustbio")
+                .with(|b| {
+                    if matches!(algorithm.backend, AlignBackend::RustBio(_)) {
+                        b.select();
+                    }
+                })
+                .with_name("rustbio radio"),
+        )
+        .child(
+            backend_radio
+                .button("wfa2", "wfa2")
+                .with(|b| {
+                    if matches!(algorithm.backend, AlignBackend::Wfa2(_)) {
+                        b.select();
+                    }
+                })
+                .with_name("wfa2 radio"),
+        );
     // common parameters:
     // * gap open penalty
     // * gap extend penalty
     // * mismatch score
     // * match score
-    // * whether the banded algorithm is used
+    // * what backend is used
     let right_always_list = ListView::new()
         .child(
             "Name:",
@@ -207,16 +250,20 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
                 TEXT_WIDTH,
                 is_i32,
             ),
-        );
+        )
+        .child("Backend:", backends);
     let rustbio = match &algorithm.backend {
         AlignBackend::RustBio(r) => *r,
+        _ => RustBio::default(),
     };
     let rustbio = rustbio_settings(rustbio);
 
     // right side consists of common values at the top and band args at the bottom
-    let right_side = LinearLayout::vertical()
-        .child(right_always_list)
-        .child(rustbio);
+    let right_side = LinearLayout::vertical().child(right_always_list).child(
+        HideableView::new(rustbio)
+            .visible(matches!(&algorithm.backend, AlignBackend::RustBio(_)))
+            .with_name("rustbio settings"),
+    );
 
     // a radio button group determines what AlignMode we choose
     // below that group, there is a textbox that allows changing the blocksize
@@ -274,8 +321,9 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
         left_side.add_child(Panel::new(TextView::new("Semiglobal").min_width(12)));
     }
     if cursor.preset.is_some() {
+        let backend_radio = backend_radio.clone();
         left_side.add_child(Button::new("Apply", move |siv| {
-            apply_algorithm(siv, cursor)
+            apply_algorithm(siv, cursor, backend_radio.clone())
         }))
     }
     left_side = left_side
@@ -286,6 +334,7 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
                     preset: None,
                     kind: cursor.kind,
                 },
+                backend_radio.clone(),
             )
         }))
         .child(Button::new("Cancel", close_top_maybe_quit))

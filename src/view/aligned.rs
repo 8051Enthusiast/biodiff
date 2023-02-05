@@ -3,7 +3,7 @@ use std::{array::from_fn, ops::Range, sync::mpsc::Sender};
 use cursive::{Vec2, View};
 
 use crate::{
-    align::{AlignAlgorithm, AlignElement},
+    align::{AlignElement, AlignInfo},
     backend::{Action, Backend, Cursiv},
     cursor::{CursorActive, Move},
     datastruct::{DoubleVec, SignedArray},
@@ -49,7 +49,7 @@ impl Aligned {
         first: FileState,
         second: FileState,
         dh: DoubleHexContext,
-        algo: &AlignAlgorithm,
+        align: &AlignInfo,
         sel: [Option<Range<usize>>; 2],
         sender: Sender<AlignedMessage>,
     ) -> Self {
@@ -57,7 +57,7 @@ impl Aligned {
         let data = DoubleVec::new();
         let first_arc = first.content.clone();
         let second_arc = second.content.clone();
-        algo.start_align_with_selection(
+        align.start_align_with_selection(
             [first_arc, second_arc],
             sel,
             [first.index, second.index],

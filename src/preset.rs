@@ -1,12 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::align::{AlignAlgorithm, AlignMode};
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum AlgorithmKind {
-    Global,
-    Semiglobal,
-}
+use crate::align::{AlgorithmKind, AlignAlgorithm, AlignInfo};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct PresetCursor {
@@ -30,13 +24,11 @@ pub struct PresetList {
 
 impl Default for PresetList {
     fn default() -> Self {
+        let info = AlignInfo::default();
         PresetList {
-            global: vec![AlignAlgorithm::default()],
+            global: vec![info.global],
             current_global: 0,
-            semiglobal: vec![AlignAlgorithm {
-                mode: AlignMode::Semiglobal,
-                ..AlignAlgorithm::default_semiglobal()
-            }],
+            semiglobal: vec![info.semiglobal],
             current_semiglobal: 0,
         }
     }
@@ -48,6 +40,12 @@ impl PresetList {
     }
     pub fn current_semiglobal(&self) -> &AlignAlgorithm {
         &self.semiglobal[self.current_semiglobal as usize]
+    }
+    pub fn current_info(&self) -> AlignInfo {
+        AlignInfo {
+            global: self.current_global().clone(),
+            semiglobal: self.current_semiglobal().clone(),
+        }
     }
     /// gets the current preset at the cursor, giving back the default
     /// if the cursor doesn't have an index

@@ -1,4 +1,5 @@
 pub mod rustbio;
+pub mod wfa2;
 use std::{
     ops::Range,
     sync::{
@@ -16,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 pub use self::rustbio::Banded;
 use self::rustbio::RustBio;
+use self::wfa2::Wfa2;
 
 pub const DEFAULT_BLOCKSIZE: usize = 8192;
 
@@ -33,6 +35,12 @@ pub enum AlignMode {
 
 #[derive(Clone, Copy, Debug)]
 pub enum InternalMode {
+    Global,
+    Semiglobal,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AlgorithmKind {
     Global,
     Semiglobal,
 }
@@ -55,12 +63,15 @@ trait Align {
 pub enum AlignBackend {
     #[serde(rename = "rustbio")]
     RustBio(RustBio),
+    #[serde(rename = "wfa2")]
+    Wfa2(Wfa2),
 }
 
 impl AlignBackend {
     fn aligner(&self) -> &dyn Align {
         match self {
             AlignBackend::RustBio(r) => r,
+            AlignBackend::Wfa2(w) => w,
         }
     }
 }
@@ -92,43 +103,22 @@ impl Default for AlignAlgorithm {
     }
 }
 
-impl AlignAlgorithm {
-    pub fn default_semiglobal() -> Self {
-        AlignAlgorithm {
-            mode: AlignMode::Semiglobal,
-            ..Default::default()
+#[derive(Clone, Debug)]
+pub struct AlignInfo {
+    pub global: AlignAlgorithm,
+    pub semiglobal: AlignAlgorithm,
+}
+
+impl Default for AlignInfo {
+    fn default() -> Self {
+        Self {
+            global: Default::default(),
+            semiglobal: AlignAlgorithm::default_semiglobal(),
         }
     }
-    /// This function starts the threads for the alignment, which send the data over the sender.
-    /// It should then immediately return.
-    pub fn start_align(
-        &self,
-        x: FileContent,
-        y: FileContent,
-        addr: (usize, usize),
-        sender: Sender<AlignedMessage>,
-    ) {
-        let algo1 = self.clone();
-        let algo2 = self.clone();
-        match self.mode {
-            AlignMode::Global => {
-                // we only need one thread
-                std::thread::spawn(move || algo2.align_whole(x, y, InternalMode::Global, sender));
-            }
-            AlignMode::Blockwise(blocksize) => {
-                // for Blockwise, we need one thread for each direction from the cursor
-                // Clone the data for the second thread here
-                let x_cp = x.clone();
-                let y_cp = y.clone();
-                let sender_cp = sender.clone();
-                std::thread::spawn(move || algo1.align_end(x, y, addr, blocksize, sender));
-                std::thread::spawn(move || {
-                    algo2.align_front(x_cp, y_cp, addr, blocksize, sender_cp)
-                });
-            }
-            AlignMode::Semiglobal => unreachable!("Semiglobal alignment is not supported here"),
-        }
-    }
+}
+
+impl AlignInfo {
     pub fn start_align_with_selection(
         &self,
         files: [FileContent; 2],
@@ -140,13 +130,17 @@ impl AlignAlgorithm {
             [None, None] | [Some(_), Some(_)] => {
                 let [file0, file1] = files;
                 // if both or none are selected, just do the normal process
-                return self.start_align(file0, file1, (addr[0], addr[1]), sender);
+                return self
+                    .global
+                    .start_align(file0, file1, (addr[0], addr[1]), sender);
             }
             [Some(x), None] | [None, Some(x)] => {
                 if x.is_empty() {
                     // selection is empty, does not really make sense to do glocal alignment
                     let [file0, file1] = files;
-                    return self.start_align(file0, file1, (addr[0], addr[1]), sender);
+                    return self
+                        .global
+                        .start_align(file0, file1, (addr[0], addr[1]), sender);
                 }
                 let right = selection[1].is_some();
                 (
@@ -162,27 +156,9 @@ impl AlignAlgorithm {
         });
     }
 
-    fn align(&self, x: &[u8], y: &[u8], mode: InternalMode) -> Vec<Op> {
-        if x[..] == y[..] {
-            return vec![Op::Match; x.len()];
-        }
-        self.backend.aligner().align(self, mode, x, y)
-    }
-
-    /// Aligns x to y as a whole
-    fn align_whole(
-        &self,
-        x: FileContent,
-        y: FileContent,
-        mode: InternalMode,
-        sender: Sender<AlignedMessage>,
-    ) {
-        let alignment = self.align(&x, &y, mode);
-        let _ = sender.send(AlignedMessage::Append(
-            AlignElement::from_array(&alignment, &x, &y, 0, 0).0,
-        ));
-    }
-
+    /// aligns two files first using the semiglobal algorithm, then aligns the rest of the files
+    /// using the global algorithm
+    /// The bool in selection indicates whether the selection is on the right side
     fn align_with_selection(
         &self,
         files: [FileContent; 2],
@@ -194,7 +170,8 @@ impl AlignAlgorithm {
         let full_pattern = &files[right as usize].clone();
         let pattern = &files[right as usize].clone()[select.clone()];
         let text = &files[(!right) as usize].clone()[..];
-        let alignment = self.align(pattern, text, InternalMode::Semiglobal);
+        let alignment = self.semiglobal.align(pattern, text, InternalMode::Semiglobal);
+
         let (alignment, textaddr) = ops_pattern_subrange(&alignment);
         let (mut array, pattern_end, text_end) =
             AlignElement::from_array(alignment, full_pattern, text, select.start, textaddr);
@@ -216,14 +193,14 @@ impl AlignAlgorithm {
         if sender.send(AlignedMessage::Prepend(prepend)).is_err() {
             return;
         }
-        let blocksize = if let AlignMode::Blockwise(s) = self.mode {
+        let blocksize = if let AlignMode::Blockwise(s) = self.global.mode {
             s
         } else {
             usize::MAX
         };
         let files2 = files.clone();
         let sender2 = sender.clone();
-        let algo = self.clone();
+        let algo = self.global.clone();
         std::thread::spawn(move || {
             algo.align_end(
                 files2[0].clone(),
@@ -233,7 +210,7 @@ impl AlignAlgorithm {
                 sender2,
             );
         });
-        self.align_front(
+        self.global.align_front(
             files[0].clone(),
             files[1].clone(),
             start_addr,
@@ -241,6 +218,61 @@ impl AlignAlgorithm {
             sender,
         );
     }
+}
+
+impl AlignAlgorithm {
+    pub fn default_semiglobal() -> Self {
+        AlignAlgorithm {
+            mode: AlignMode::Semiglobal,
+            ..Default::default()
+        }
+    }
+
+    /// Aligns x to y as a whole
+    fn align_whole(&self, x: FileContent, y: FileContent, sender: Sender<AlignedMessage>) {
+        let alignment = self.align(&x, &y, InternalMode::Global);
+        let _ = sender.send(AlignedMessage::Append(
+            AlignElement::from_array(&alignment, &x, &y, 0, 0).0,
+        ));
+    }
+    /// This function starts the threads for the alignment, which send the data over the sender.
+    /// It should then immediately return.
+    pub fn start_align(
+        &self,
+        x: FileContent,
+        y: FileContent,
+        addr: (usize, usize),
+        sender: Sender<AlignedMessage>,
+    ) {
+        let algo1 = self.clone();
+        let algo2 = self.clone();
+        match self.mode {
+            AlignMode::Global => {
+                // we only need one thread
+                std::thread::spawn(move || algo2.align_whole(x, y, sender));
+            }
+            AlignMode::Blockwise(blocksize) => {
+                // for Blockwise, we need one thread for each direction from the cursor
+                // Clone the data for the second thread here
+                let x_cp = x.clone();
+                let y_cp = y.clone();
+                let sender_cp = sender.clone();
+                std::thread::spawn(move || algo1.align_end(x, y, addr, blocksize, sender));
+                std::thread::spawn(move || {
+                    algo2.align_front(x_cp, y_cp, addr, blocksize, sender_cp)
+                });
+            }
+            AlignMode::Semiglobal => unreachable!("Semiglobal alignment is not supported here"),
+        }
+    }
+
+    fn align(&self, x: &[u8], y: &[u8], mode: InternalMode) -> Vec<Op> {
+        if x[..] == y[..] {
+            return vec![Op::Match; x.len()];
+        }
+        self.backend.aligner().align(self, mode, x, y)
+    }
+
 
     /// Blockwise alignment in the ascending address direction
     pub fn align_end(
@@ -415,6 +447,7 @@ impl AlignElement {
     }
 }
 
+/// Removes leading/trailing deletions and clips from the alignment
 fn ops_pattern_subrange(mut ops: &[Op]) -> (&[Op], usize) {
     let mut ret_addr = 0;
     if let [Op::Yclip(addr), rest @ ..] = ops {

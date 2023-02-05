@@ -13,6 +13,7 @@ default-run = "biodiff"
 [workspace]
 members = [
 	"hexagex",
+	"biodiff-wfa2-sys",
 ]
 
 [dependencies]
@@ -27,6 +28,7 @@ dirs = "5.0.1"
 regex = "1.10.4"
 hexagex = { path = "hexagex", version = "0.2.2" }
 realfft = "3.3.0"
+wfa2-sys = { path = "biodiff-wfa2-sys", version = "2.3.4" }
 
 [dependencies.cursive]
 version = "0.20.0"
