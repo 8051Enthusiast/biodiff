@@ -1,4 +1,5 @@
 mod rustbio;
+mod wfa2;
 use std::{
     ops::Range,
     sync::{
@@ -13,7 +14,10 @@ use bio::alignment::AlignmentOperation as Op;
 use realfft::{num_complex::Complex32, RealFftPlanner, RealToComplex};
 use serde::{Deserialize, Serialize};
 
-use self::rustbio::{align_banded, RustBio};
+use self::{
+    rustbio::{align_banded, RustBio},
+    wfa2::Wfa2,
+};
 
 pub const DEFAULT_BLOCKSIZE: usize = 8192;
 pub const DEFAULT_KMER: usize = 8;
