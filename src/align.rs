@@ -1,3 +1,4 @@
+mod rustbio;
 use std::{
     ops::Range,
     sync::{
@@ -8,12 +9,11 @@ use std::{
 };
 
 use crate::{file::FileContent, view::AlignedMessage};
-use bio::alignment::{
-    pairwise::{self, MatchFunc, Scoring},
-    AlignmentOperation as Op,
-};
+use bio::alignment::AlignmentOperation as Op;
 use realfft::{num_complex::Complex32, RealFftPlanner, RealToComplex};
 use serde::{Deserialize, Serialize};
+
+use self::rustbio::{align_banded, RustBio};
 
 pub const DEFAULT_BLOCKSIZE: usize = 8192;
 pub const DEFAULT_KMER: usize = 8;
@@ -31,31 +31,36 @@ pub enum AlignMode {
     Blockwise(usize),
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum InternalMode {
+    Local,
+    Global,
+    Semiglobal,
+}
+
+impl From<AlignMode> for InternalMode {
+    fn from(value: AlignMode) -> Self {
+        match value {
+            AlignMode::Local => InternalMode::Local,
+            AlignMode::Global | AlignMode::Blockwise(_) => InternalMode::Global,
+        }
+    }
+}
+
+trait Align {
+    fn align(algo: &AlignAlgorithm, mode: InternalMode, x: &[u8], y: &[u8]) -> Vec<Op>;
+}
+
 /// Determines whether to use the banded variant of the algorithm with given k-mer length
 /// and window size
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Banded {
     Normal,
     Banded { kmer: usize, window: usize },
 }
-impl Banded {
-    fn align<F: MatchFunc>(&self, scoring: Scoring<F>, x: &[u8], y: &[u8]) -> Vec<Op> {
-        if x == y {
-            return vec![Op::Match; x.len()];
-        }
-        // note that we recreate the Aligner each call, but i don't think that part is expensive
-        match self {
-            Banded::Normal => pairwise::Aligner::with_scoring(scoring).custom(x, y),
-            Banded::Banded { kmer, window } => {
-                pairwise::banded::Aligner::with_scoring(scoring, *kmer, *window).custom(x, y)
-            }
-        }
-        .operations
-    }
-}
 
 /// Contains parameters to run the alignment algorithm with
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AlignAlgorithm {
     pub gap_open: i32,
@@ -80,20 +85,6 @@ impl Default for AlignAlgorithm {
 }
 
 impl AlignAlgorithm {
-    pub fn scorer(&self) -> Scoring<impl MatchFunc + Copy> {
-        let match_score = self.match_score;
-        let mismatch_score = self.mismatch_score;
-        let score = move |a: u8, b: u8| {
-            if a == b {
-                match_score
-            } else {
-                mismatch_score
-            }
-        };
-        Scoring::new(self.gap_open, self.gap_extend, score)
-            .xclip(0)
-            .yclip(0)
-    }
     /// This function starts the threads for the alignment, which send the data over the sender.
     /// It should then immediately return.
     pub fn start_align(
@@ -103,29 +94,24 @@ impl AlignAlgorithm {
         addr: (usize, usize),
         sender: Sender<AlignedMessage>,
     ) {
-        let scorer = self.scorer();
-        let band = self.band;
+        let algo = *self;
         match self.mode {
             AlignMode::Local => {
                 // we only need one thread
-                std::thread::spawn(move || align_whole(x, y, scorer, band, sender));
+                std::thread::spawn(move || algo.align_whole(x, y, InternalMode::Local, sender));
             }
             AlignMode::Global => {
-                // make xclip and yclip essentially infinitely expensive so that we have global alignment
-                let global_scorer = scorer.xclip(pairwise::MIN_SCORE).yclip(pairwise::MIN_SCORE);
-                std::thread::spawn(move || align_whole(x, y, global_scorer, band, sender));
+                std::thread::spawn(move || algo.align_whole(x, y, InternalMode::Global, sender));
             }
             AlignMode::Blockwise(blocksize) => {
                 // for Blockwise, we need one thread for each direction from the cursor
                 // Clone the data for the second thread here
                 let x_cp = x.clone();
                 let y_cp = y.clone();
-                let scorer_cp = scorer;
-                let band_cp = band.clone();
                 let sender_cp = sender.clone();
-                std::thread::spawn(move || align_end(x, y, addr, scorer, band, blocksize, sender));
+                std::thread::spawn(move || algo.align_end(x, y, addr, blocksize, sender));
                 std::thread::spawn(move || {
-                    align_front(x_cp, y_cp, addr, scorer_cp, band_cp, blocksize, sender_cp)
+                    algo.align_front(x_cp, y_cp, addr, blocksize, sender_cp)
                 });
             }
         }
@@ -157,12 +143,182 @@ impl AlignAlgorithm {
                 )
             }
         };
-        let scorer = self.scorer();
-        let band = self.band;
-        let mode = self.mode;
+        let algo = *self;
         std::thread::spawn(move || {
-            align_with_selection(files, scorer, band, (selected, right), end, mode, sender)
+            algo.align_with_selection(files, (selected, right), end, sender)
         });
+    }
+
+    fn align(&self, x: &[u8], y: &[u8], mode: InternalMode) -> Vec<Op> {
+        if x[..] == y[..] {
+            return vec![Op::Match; x.len()];
+        }
+        if self.band == Banded::Normal {
+            RustBio::align(&self, mode, &x, &y)
+        } else {
+            align_banded(&self, mode, &x, &y)
+        }
+    }
+
+    /// Aligns x to y as a whole
+    fn align_whole(
+        &self,
+        x: FileContent,
+        y: FileContent,
+        mode: InternalMode,
+        sender: Sender<AlignedMessage>,
+    ) {
+        let alignment = self.align(&x, &y, mode);
+        let _ = sender.send(AlignedMessage::Append(
+            AlignElement::from_array(&alignment, &x, &y, 0, 0).0,
+        ));
+    }
+
+    fn align_with_selection(
+        &self,
+        files: [FileContent; 2],
+        selection: (Range<usize>, bool),
+        end: bool,
+        sender: Sender<AlignedMessage>,
+    ) {
+        let (select, right) = selection;
+        let full_pattern = &files[right as usize].clone();
+        let pattern = &files[right as usize].clone()[select.clone()];
+        let text = &files[(!right) as usize].clone()[..];
+        let alignment = self.align(pattern, text, InternalMode::Semiglobal);
+        let (alignment, textaddr) = ops_pattern_subrange(&alignment);
+        let (mut array, pattern_end, text_end) =
+            AlignElement::from_array(alignment, &full_pattern, text, select.start, textaddr);
+        let (start_addr, end_addr) = if right {
+            array.iter_mut().for_each(|x| *x = x.mirror());
+            ((textaddr, select.start), (text_end, pattern_end))
+        } else {
+            ((select.start, textaddr), (pattern_end, text_end))
+        };
+        let (prepend, append) = if end {
+            let ap = array.pop().into_iter().collect();
+            (array, ap)
+        } else {
+            (Vec::new(), array)
+        };
+        if sender.send(AlignedMessage::Append(append)).is_err() {
+            return;
+        }
+        if sender.send(AlignedMessage::Prepend(prepend)).is_err() {
+            return;
+        }
+        let blocksize = if let AlignMode::Blockwise(s) = self.mode {
+            s
+        } else {
+            usize::MAX
+        };
+        let files2 = files.clone();
+        let sender2 = sender.clone();
+        let algo = *self;
+        std::thread::spawn(move || {
+            algo.align_end(
+                files2[0].clone(),
+                files2[1].clone(),
+                end_addr,
+                blocksize,
+                sender2,
+            );
+        });
+        self.align_front(
+            files[0].clone(),
+            files[1].clone(),
+            start_addr,
+            blocksize,
+            sender,
+        );
+    }
+
+    /// Blockwise alignment in the ascending address direction
+    pub fn align_end(
+        &self,
+        x: FileContent,
+        y: FileContent,
+        addr: (usize, usize),
+        block_size: usize,
+        sender: Sender<AlignedMessage>,
+    ) {
+        let (mut xaddr, mut yaddr) = addr;
+        // we want to have the beginning of our two arrays aligned at the same place
+        // since we start from a previous alignment or a cursor
+        while xaddr < x.len() && yaddr < y.len() {
+            // align at most block_size bytes from each sequence
+            let end_aligned = self.align(
+                &x[xaddr..(xaddr + block_size).min(x.len())],
+                &y[yaddr..(yaddr + block_size).min(y.len())],
+                self.mode.into(),
+            );
+            // we only actually append at most half of the block size since we make sure gaps crossing
+            // block boundaries are better detected
+            let ops = &end_aligned[0..end_aligned.len().min(block_size / 2)];
+            // we will not progress like this, so might as well quit
+            if ops.is_empty() {
+                break;
+            }
+            let (end, new_xaddr, new_yaddr) = AlignElement::from_array(ops, &x, &y, xaddr, yaddr);
+            if sender.send(AlignedMessage::Append(end)).is_err() {
+                return;
+            }
+            xaddr = new_xaddr;
+            yaddr = new_yaddr;
+        }
+        let clip = if x.len() == xaddr {
+            Op::Yclip(y.len() - yaddr)
+        } else if y.len() == yaddr {
+            Op::Xclip(x.len() - xaddr)
+        } else {
+            return;
+        };
+        let leftover = AlignElement::from_array(&[clip], &x, &y, xaddr, yaddr).0;
+        let _ = sender.send(AlignedMessage::Append(leftover));
+    }
+    /// Same as align_end, but in the other direction
+    pub fn align_front(
+        &self,
+        x: FileContent,
+        y: FileContent,
+        addr: (usize, usize),
+        block_size: usize,
+        sender: Sender<AlignedMessage>,
+    ) {
+        let (mut xaddr, mut yaddr) = addr;
+        while xaddr > 0 && yaddr > 0 {
+            let lower_xaddr = xaddr.saturating_sub(block_size);
+            let lower_yaddr = yaddr.saturating_sub(block_size);
+            let aligned = self.align(
+                &x[lower_xaddr..xaddr],
+                &y[lower_yaddr..yaddr],
+                self.mode.into(),
+            );
+            // unlike in align_end, we create the Alignelement from the whole array and then cut it
+            // in half. This is because the addresses returned from from_array are at the end, which
+            // we already know, so we instead take the start addresses from the array itself
+            let (end, _, _) = AlignElement::from_array(&aligned, &x, &y, lower_xaddr, lower_yaddr);
+            let real_end = Vec::from(&end[end.len().saturating_sub(block_size / 2)..end.len()]);
+            // if this is empty, we will not progress, so send the leftover out and quit after that
+            if real_end.is_empty() {
+                break;
+            }
+            let first = real_end.first().unwrap();
+            xaddr = first.xaddr;
+            yaddr = first.yaddr;
+            if sender.send(AlignedMessage::Prepend(real_end)).is_err() {
+                return;
+            }
+        }
+        let clip = if xaddr == 0 {
+            Op::Yclip(yaddr)
+        } else if yaddr == 0 {
+            Op::Xclip(xaddr)
+        } else {
+            return;
+        };
+        let leftover = AlignElement::from_array(&[clip], &x, &y, 0, 0).0;
+        let _ = sender.send(AlignedMessage::Prepend(leftover));
     }
 }
 
@@ -264,188 +420,6 @@ fn ops_pattern_subrange(mut ops: &[Op]) -> (&[Op], usize) {
         ops = rest;
     }
     (ops, ret_addr)
-}
-
-fn align_with_selection(
-    files: [FileContent; 2],
-    scoring: Scoring<impl MatchFunc + Copy + Send + Sync + 'static>,
-    band: Banded,
-    selection: (Range<usize>, bool),
-    end: bool,
-    mode: AlignMode,
-    sender: Sender<AlignedMessage>,
-) {
-    let (select, right) = selection;
-    let full_pattern = &files[right as usize].clone();
-    let pattern = &files[right as usize].clone()[select.clone()];
-    let text = &files[(!right) as usize].clone()[..];
-    let glocal_scorer = scoring.xclip(pairwise::MIN_SCORE);
-    let alignment = band.align(glocal_scorer, pattern, text);
-    let (alignment, textaddr) = ops_pattern_subrange(&alignment);
-    let (mut array, pattern_end, text_end) =
-        AlignElement::from_array(alignment, &full_pattern, text, select.start, textaddr);
-    let (start_addr, end_addr) = if right {
-        array.iter_mut().for_each(|x| *x = x.mirror());
-        ((textaddr, select.start), (text_end, pattern_end))
-    } else {
-        ((select.start, textaddr), (pattern_end, text_end))
-    };
-    let (prepend, append) = if end {
-        let ap = array.pop().into_iter().collect();
-        (array, ap)
-    } else {
-        (Vec::new(), array)
-    };
-    if sender.send(AlignedMessage::Append(append)).is_err() {
-        return;
-    }
-    if sender.send(AlignedMessage::Prepend(prepend)).is_err() {
-        return;
-    }
-    let (blocksize, free_end) = match mode {
-        AlignMode::Blockwise(s) => (s, true),
-        AlignMode::Local => (usize::MAX, true),
-        AlignMode::Global => (usize::MAX, false),
-    };
-    let scorer = if !free_end {
-        scoring
-            .xclip(pairwise::MIN_SCORE)
-            .yclip(pairwise::MIN_SCORE)
-    } else {
-        scoring
-    };
-    let files2 = files.clone();
-    let sender2 = sender.clone();
-    std::thread::spawn(move || {
-        align_end(
-            files2[0].clone(),
-            files2[1].clone(),
-            end_addr,
-            scorer.clone(),
-            band,
-            blocksize,
-            sender2,
-        );
-    });
-    align_front(
-        files[0].clone(),
-        files[1].clone(),
-        start_addr,
-        scoring,
-        band,
-        blocksize,
-        sender,
-    );
-}
-
-/// Aligns x to y as a whole
-fn align_whole<F: MatchFunc>(
-    x: FileContent,
-    y: FileContent,
-    scoring: Scoring<F>,
-    band: Banded,
-    sender: Sender<AlignedMessage>,
-) {
-    let _ = sender.send(AlignedMessage::Append(
-        AlignElement::from_array(&band.align(scoring, &x, &y), &x, &y, 0, 0).0,
-    ));
-}
-
-/// Blockwise alignment in the ascending address direction
-pub fn align_end<F: MatchFunc + Clone>(
-    x: FileContent,
-    y: FileContent,
-    addr: (usize, usize),
-    scoring: Scoring<F>,
-    band: Banded,
-    block_size: usize,
-    sender: Sender<AlignedMessage>,
-) {
-    let (mut xaddr, mut yaddr) = addr;
-    // we want to have the beginning of our two arrays aligned at the same place
-    // since we start from a previous alignment or a cursor
-    let end_scorer = scoring
-        .xclip(pairwise::MIN_SCORE)
-        .yclip(pairwise::MIN_SCORE);
-    while xaddr < x.len() && yaddr < y.len() {
-        // align at most block_size bytes from each sequence
-        let end_aligned = band.align(
-            end_scorer.clone(),
-            &x[xaddr..(xaddr + block_size).min(x.len())],
-            &y[yaddr..(yaddr + block_size).min(y.len())],
-        );
-        // we only actually append at most half of the block size since we make sure gaps crossing
-        // block boundaries are better detected
-        let ops = &end_aligned[0..end_aligned.len().min(block_size / 2)];
-        // we will not progress like this, so might as well quit
-        if ops.is_empty() {
-            break;
-        }
-        let (end, new_xaddr, new_yaddr) = AlignElement::from_array(ops, &x, &y, xaddr, yaddr);
-        if sender.send(AlignedMessage::Append(end)).is_err() {
-            return;
-        }
-        xaddr = new_xaddr;
-        yaddr = new_yaddr;
-    }
-    let clip = if x.len() == xaddr {
-        Op::Yclip(y.len() - yaddr)
-    } else if y.len() == yaddr {
-        Op::Xclip(x.len() - xaddr)
-    } else {
-        return;
-    };
-    let leftover = AlignElement::from_array(&[clip], &x, &y, xaddr, yaddr).0;
-    let _ = sender.send(AlignedMessage::Append(leftover));
-}
-
-/// Same as align_end, but in the other direction
-pub fn align_front<F: MatchFunc + Clone>(
-    x: FileContent,
-    y: FileContent,
-    addr: (usize, usize),
-    scoring: Scoring<F>,
-    band: Banded,
-    block_size: usize,
-    sender: Sender<AlignedMessage>,
-) {
-    let (mut xaddr, mut yaddr) = addr;
-    let scorer = scoring
-        .xclip(pairwise::MIN_SCORE)
-        .yclip(pairwise::MIN_SCORE);
-    while xaddr > 0 && yaddr > 0 {
-        let lower_xaddr = xaddr.saturating_sub(block_size);
-        let lower_yaddr = yaddr.saturating_sub(block_size);
-        let aligned = band.align(
-            scorer.clone(),
-            &x[lower_xaddr..xaddr],
-            &y[lower_yaddr..yaddr],
-        );
-        // unlike in align_end, we create the Alignelement from the whole array and then cut it
-        // in half. This is because the addresses returned from from_array are at the end, which
-        // we already know, so we instead take the start addresses from the array itself
-        let (end, _, _) = AlignElement::from_array(&aligned, &x, &y, lower_xaddr, lower_yaddr);
-        let real_end = Vec::from(&end[end.len().saturating_sub(block_size / 2)..end.len()]);
-        // if this is empty, we will not progress, so send the leftover out and quit after that
-        if real_end.is_empty() {
-            break;
-        }
-        let first = real_end.first().unwrap();
-        xaddr = first.xaddr;
-        yaddr = first.yaddr;
-        if sender.send(AlignedMessage::Prepend(real_end)).is_err() {
-            return;
-        }
-    }
-    let clip = if xaddr == 0 {
-        Op::Yclip(yaddr)
-    } else if yaddr == 0 {
-        Op::Xclip(xaddr)
-    } else {
-        return;
-    };
-    let leftover = AlignElement::from_array(&[clip], &x, &y, 0, 0).0;
-    let _ = sender.send(AlignedMessage::Prepend(leftover));
 }
 
 pub enum FlatAlignProgressMessage {
