@@ -1,7 +1,10 @@
-use std::sync::{
-    atomic::{AtomicBool, AtomicU16, Ordering},
-    mpsc::{Sender, SyncSender},
-    Arc,
+use std::{
+    ops::Range,
+    sync::{
+        atomic::{AtomicBool, AtomicU16, Ordering},
+        mpsc::{Sender, SyncSender},
+        Arc,
+    },
 };
 
 use crate::{file::FileContent, view::AlignedMessage};
@@ -21,7 +24,7 @@ pub const DEFAULT_WINDOW: usize = 6;
 /// and aligns only using `blocksize` bytes from each sequence in one direction, which
 /// makes it works fast and local, but it doesn't see bigger gaps and everything after big gaps
 /// tends to be unaligned.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum AlignMode {
     Local,
     Global,
@@ -30,7 +33,7 @@ pub enum AlignMode {
 
 /// Determines whether to use the banded variant of the algorithm with given k-mer length
 /// and window size
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum Banded {
     Normal,
     Banded { kmer: usize, window: usize },
@@ -77,15 +80,7 @@ impl Default for AlignAlgorithm {
 }
 
 impl AlignAlgorithm {
-    /// This function starts the threads for the alignment, which send the data over the sender.
-    /// It should then immediately return.
-    pub fn start_align(
-        &self,
-        x: FileContent,
-        y: FileContent,
-        addr: (usize, usize),
-        sender: Sender<AlignedMessage>,
-    ) {
+    pub fn scorer(&self) -> Scoring<impl MatchFunc + Copy> {
         let match_score = self.match_score;
         let mismatch_score = self.mismatch_score;
         let score = move |a: u8, b: u8| {
@@ -95,8 +90,21 @@ impl AlignAlgorithm {
                 mismatch_score
             }
         };
-        let scorer = pairwise::Scoring::new(self.gap_open, self.gap_extend, score);
-        let band = self.band.clone();
+        Scoring::new(self.gap_open, self.gap_extend, score)
+            .xclip(0)
+            .yclip(0)
+    }
+    /// This function starts the threads for the alignment, which send the data over the sender.
+    /// It should then immediately return.
+    pub fn start_align(
+        &self,
+        x: FileContent,
+        y: FileContent,
+        addr: (usize, usize),
+        sender: Sender<AlignedMessage>,
+    ) {
+        let scorer = self.scorer();
+        let band = self.band;
         match self.mode {
             AlignMode::Local => {
                 // we only need one thread
@@ -122,6 +130,35 @@ impl AlignAlgorithm {
             }
         }
     }
+    pub fn start_align_with_selection(
+        &self,
+        files: [FileContent; 2],
+        selection: [Option<Range<usize>>; 2],
+        addr: [usize; 2],
+        sender: Sender<AlignedMessage>,
+    ) {
+        let (selected, right, end) = match selection.clone() {
+            [None, None] | [Some(_), Some(_)] => {
+                let [file0, file1] = files;
+                // if both or none are selected, just do the normal process
+                return self.start_align(file0, file1, (addr[0], addr[1]), sender);
+            }
+            [Some(x), None] | [None, Some(x)] => {
+                let right = selection[1].is_some();
+                (
+                    x.clone(),
+                    selection[1].is_some(),
+                    addr[!right as usize] != x.start,
+                )
+            }
+        };
+        let scorer = self.scorer();
+        let band = self.band;
+        let mode = self.mode;
+        std::thread::spawn(move || {
+            align_with_selection(files, scorer, band, (selected, right), end, mode, sender)
+        });
+    }
 }
 
 /// Representation of the alignment that saves the original addresses of the bytes.
@@ -135,6 +172,15 @@ pub struct AlignElement {
 }
 
 impl AlignElement {
+    /// mirrors the values
+    pub fn mirror(&self) -> AlignElement {
+        AlignElement {
+            xaddr: self.yaddr,
+            xbyte: self.ybyte,
+            yaddr: self.xaddr,
+            ybyte: self.xbyte,
+        }
+    }
     /// Creates a vector out of `AlignElement`s from the operations outputted by rust-bio.
     /// Also outputs the addresses at the end of the array.
     fn from_array(
@@ -199,6 +245,94 @@ impl AlignElement {
     }
 }
 
+fn ops_pattern_subrange(mut ops: &[Op]) -> (&[Op], usize) {
+    let mut ret_addr = 0;
+    if let [Op::Yclip(addr), rest @ ..] = ops {
+        ops = rest;
+        ret_addr += addr;
+    }
+    while let [Op::Del, rest @ ..] = ops {
+        ops = rest;
+        ret_addr += 1;
+    }
+    while let [rest @ .., Op::Del | Op::Yclip(_)] = ops {
+        ops = rest;
+    }
+    (ops, ret_addr)
+}
+
+fn align_with_selection(
+    files: [FileContent; 2],
+    scoring: Scoring<impl MatchFunc + Copy + Send + Sync + 'static>,
+    band: Banded,
+    selection: (Range<usize>, bool),
+    end: bool,
+    mode: AlignMode,
+    sender: Sender<AlignedMessage>,
+) {
+    let (select, right) = selection;
+    let full_pattern = &files[right as usize].clone();
+    let pattern = &files[right as usize].clone()[select.clone()];
+    let text = &files[(!right) as usize].clone()[..];
+    let glocal_scorer = scoring.xclip(pairwise::MIN_SCORE);
+    let alignment = band.align(glocal_scorer, pattern, text);
+    let (alignment, textaddr) = ops_pattern_subrange(&alignment);
+    let (mut array, pattern_end, text_end) =
+        AlignElement::from_array(alignment, &full_pattern, text, select.start, textaddr);
+    let (start_addr, end_addr) = if right {
+        array.iter_mut().for_each(|x| *x = x.mirror());
+        ((textaddr, select.start), (text_end, pattern_end))
+    } else {
+        ((select.start, textaddr), (pattern_end, text_end))
+    };
+    let (prepend, append) = if end {
+        let ap = array.pop().into_iter().collect();
+        (array, ap)
+    } else {
+        (Vec::new(), array)
+    };
+    if sender.send(AlignedMessage::Append(append)).is_err() {
+        return;
+    }
+    if sender.send(AlignedMessage::Prepend(prepend)).is_err() {
+        return;
+    }
+    let (blocksize, free_end) = match mode {
+        AlignMode::Blockwise(s) => (s, true),
+        AlignMode::Local => (usize::MAX, true),
+        AlignMode::Global => (usize::MAX, false),
+    };
+    let scorer = if !free_end {
+        scoring
+            .xclip(pairwise::MIN_SCORE)
+            .yclip(pairwise::MIN_SCORE)
+    } else {
+        scoring
+    };
+    let files2 = files.clone();
+    let sender2 = sender.clone();
+    std::thread::spawn(move || {
+        align_end(
+            files2[0].clone(),
+            files2[1].clone(),
+            end_addr,
+            scorer.clone(),
+            band,
+            blocksize,
+            sender2,
+        );
+    });
+    align_front(
+        files[0].clone(),
+        files[1].clone(),
+        start_addr,
+        scoring,
+        band,
+        blocksize,
+        sender,
+    );
+}
+
 /// Aligns x to y as a whole
 fn align_whole<F: MatchFunc>(
     x: FileContent,
@@ -226,8 +360,8 @@ pub fn align_end<F: MatchFunc + Clone>(
     // we want to have the beginning of our two arrays aligned at the same place
     // since we start from a previous alignment or a cursor
     let end_scorer = scoring
-        .xclip_prefix(pairwise::MIN_SCORE)
-        .yclip_prefix(pairwise::MIN_SCORE);
+        .xclip(pairwise::MIN_SCORE)
+        .yclip(pairwise::MIN_SCORE);
     while xaddr < x.len() && yaddr < y.len() {
         // align at most block_size bytes from each sequence
         let end_aligned = band.align(
@@ -272,8 +406,8 @@ pub fn align_front<F: MatchFunc + Clone>(
 ) {
     let (mut xaddr, mut yaddr) = addr;
     let scorer = scoring
-        .xclip_suffix(pairwise::MIN_SCORE)
-        .yclip_suffix(pairwise::MIN_SCORE);
+        .xclip(pairwise::MIN_SCORE)
+        .yclip(pairwise::MIN_SCORE);
     while xaddr > 0 && yaddr > 0 {
         let lower_xaddr = xaddr.saturating_sub(block_size);
         let lower_yaddr = yaddr.saturating_sub(block_size);

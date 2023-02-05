@@ -1,11 +1,12 @@
 use std::iter::repeat;
 
 use crate::{
-    backend::{Backend, Color, Effect},
+    backend::{Backend, BackgroundColor, Color, Effect},
     cursor::{CursorActive, CursorState},
     style::{
-        byte, byte_effect, disp_addr, disp_ascii, disp_bottom_addr, disp_column_blocks, ByteData,
-        ColumnSetting, Style, FRONT_PAD, MIDDLE_PAD,
+        background_color, byte, byte_effect, disp_addr, disp_ascii, disp_bottom_addr,
+        disp_column_blocks, spacer_background_color, ByteData, ColumnSetting, Style, FRONT_PAD,
+        MIDDLE_PAD,
     },
     util::autocorrelation,
 };
@@ -14,23 +15,27 @@ use unicode_width::UnicodeWidthStr;
 /// A line that can be printed using a backend for two hex views next to each other
 #[derive(Debug, Clone)]
 pub struct DoubleHexLine {
-    pub address: (Option<usize>, Option<usize>),
-    pub bytes: Vec<(Option<ByteData>, Option<ByteData>)>,
+    pub address: [Option<usize>; 2],
+    pub bytes: Vec<(ByteData, ByteData)>,
 }
 
 impl DoubleHexLine {
+    fn print_unimportant<B: Backend>(&self, printer: &mut B, text: &str) {
+        printer.append_text(
+            text,
+            Color::Unimportant,
+            BackgroundColor::Blank,
+            Effect::none(),
+        );
+    }
     /// Prints one side of the line
     fn print_half<B>(&self, printer: &mut B, line: usize, style: Style, first: bool)
     where
         B: Backend,
     {
-        printer.append_text(FRONT_PAD, Color::Unimportant, Effect::None);
-        let address = if first {
-            self.address.0
-        } else {
-            self.address.1
-        };
-        let mut bytes = vec![(None, None); self.bytes.len()];
+        self.print_unimportant(printer, FRONT_PAD);
+        let address = self.address[(!first) as usize];
+        let mut bytes = vec![(ByteData::default(), ByteData::default()); self.bytes.len()];
         for (i, (a, b)) in self.bytes.iter().enumerate() {
             let target = if style.right_to_left {
                 &mut bytes[self.bytes.len() - 1 - i]
@@ -40,28 +45,22 @@ impl DoubleHexLine {
             *target = if first { (*a, *b) } else { (*b, *a) }
         }
         if !style.right_to_left {
-            printer.append_text(
-                &disp_addr(address, style.addr_width),
-                Color::Unimportant,
-                Effect::None,
-            );
+            self.print_unimportant(printer, &disp_addr(address, style.addr_width));
         }
         let width = self.bytes.len();
         for (i, (a, b)) in bytes.iter().enumerate() {
             let s = style.mode.disp(byte(*a), false);
             let color = style.mode.color(*a, *b, line);
             let effect = byte_effect(*a);
-            printer.append_text(&s, color, effect);
+            let bg = background_color(*a);
+            printer.append_text(&s, color, bg, effect);
             if style.spacer && i + 1 != width && i % 8 == 7 {
-                printer.append_text(" ", color, effect);
+                let spacer_bg = spacer_background_color(*a, style.right_to_left);
+                printer.append_text(" ", color, spacer_bg, effect);
             }
         }
         if style.right_to_left {
-            printer.append_text(
-                &disp_addr(address, style.addr_width),
-                Color::Unimportant,
-                Effect::None,
-            );
+            self.print_unimportant(printer, &disp_addr(address, style.addr_width));
         }
         for col_disp in [
             (style.ascii_col, disp_ascii as fn(_) -> _),
@@ -70,12 +69,13 @@ impl DoubleHexLine {
         .iter()
         .filter_map(|(c, d)| c.then(|| d))
         {
-            printer.append_text(MIDDLE_PAD, Color::Unimportant, Effect::None);
+            self.print_unimportant(printer, MIDDLE_PAD);
             for (a, b) in &bytes {
                 let s = col_disp(byte(*a));
                 let color = style.mode.color(*a, *b, line);
                 let effect = byte_effect(*a);
-                printer.append_text(&s, color, effect);
+                let bg = background_color(*a);
+                printer.append_text(&s, color, bg, effect);
             }
         }
     }
@@ -85,7 +85,12 @@ impl DoubleHexLine {
         printer.set_line(line);
         self.print_half(printer, line, style, true);
 
-        printer.append_text(MIDDLE_PAD, Color::Unimportant, Effect::None);
+        printer.append_text(
+            MIDDLE_PAD,
+            Color::Unimportant,
+            BackgroundColor::Blank,
+            Effect::none(),
+        );
         self.print_half(printer, line, style, false);
     }
 
@@ -251,21 +256,18 @@ impl DoubleHexContext {
         &self,
         backend: &mut B,
         active: CursorActive,
-        at_cursor: (Option<ByteData>, Option<ByteData>),
-        cursor_addr: (Option<usize>, Option<usize>),
+        at_cursor: (ByteData, ByteData),
+        cursor_addr: [Option<usize>; 2],
     ) {
         // the cursor is displayed with reverse video
-        let effect = |is_active, byte: Option<ByteData>| {
+        let effect = |is_active, byte: ByteData| {
             if is_active {
-                Effect::Inverted
-            } else {
-                match byte {
-                    Some(ByteData {
-                        is_search_result: true,
-                        ..
-                    }) => Effect::Bold,
-                    _ => Effect::None,
+                Effect {
+                    inverted: is_active,
+                    bold: byte.is_search_result,
                 }
+            } else {
+                byte_effect(byte)
             }
         };
 
@@ -273,11 +275,12 @@ impl DoubleHexContext {
         let (first_x, first_y) = self.first_cursor();
         let first_effect = effect(active.is_first(), at_cursor.0);
         let first_color = self.style.mode.color(at_cursor.0, at_cursor.1, first_y);
+        let first_bg = background_color(at_cursor.0);
         let first_text = self.style.mode.disp(byte(at_cursor.0), true);
         // note again that the title bar is skipped
         backend.set_pos(first_x, first_y);
         // we cut of the last byte of the disp_hex so that the space is not reverse video'd
-        backend.append_text(&first_text, first_color, first_effect);
+        backend.append_text(&first_text, first_color, first_bg, first_effect);
         // first ascii and bars column
         for (fx, fy, disp_col) in [
             (self.first_cursor_ascii(), disp_ascii as fn(_) -> _),
@@ -287,16 +290,22 @@ impl DoubleHexContext {
         .filter_map(|(a, b)| a.map(|(a0, a1)| (a0, a1, b)))
         {
             backend.set_pos(fx, fy);
-            backend.append_text(&disp_col(byte(at_cursor.0)), first_color, first_effect);
+            backend.append_text(
+                &disp_col(byte(at_cursor.0)),
+                first_color,
+                first_bg,
+                first_effect,
+            );
         }
 
         // second cursor
         let (second_x, second_y) = self.second_cursor();
         let second_effect = effect(active.is_second(), at_cursor.1);
         let second_color = self.style.mode.color(at_cursor.1, at_cursor.0, second_y);
+        let second_bg = background_color(at_cursor.1);
         let second_text = self.style.mode.disp(byte(at_cursor.1), true);
         backend.set_pos(second_x, second_y);
-        backend.append_text(&second_text, second_color, second_effect);
+        backend.append_text(&second_text, second_color, second_bg, second_effect);
         // second ascii and bars column
         for (sx, sy, disp_col) in [
             (self.second_cursor_ascii(), disp_ascii as fn(_) -> _),
@@ -306,7 +315,12 @@ impl DoubleHexContext {
         .filter_map(|(a, b)| a.map(|(a0, a1)| (a0, a1, b)))
         {
             backend.set_pos(sx, sy);
-            backend.append_text(&disp_col(byte(at_cursor.1)), second_color, second_effect);
+            backend.append_text(
+                &disp_col(byte(at_cursor.1)),
+                second_color,
+                second_bg,
+                second_effect,
+            );
         }
 
         // status bar address
@@ -320,7 +334,12 @@ impl DoubleHexContext {
                 self.full_height() - 1,
             );
         }
-        backend.append_text(&addr_print, Color::HexSame, Effect::Inverted);
+        backend.append_text(
+            &addr_print,
+            Color::HexSame,
+            BackgroundColor::Blank,
+            Effect::inverted(),
+        );
     }
 
     /// prints the line at the top containing the filenames and status
@@ -364,22 +383,33 @@ impl DoubleHexContext {
         };
         let first_title = format_title(short_first);
         printer.set_line(0);
-        printer.append_text(&first_title, Color::HexSame, Effect::Inverted);
+        printer.append_text(
+            &first_title,
+            Color::HexSame,
+            BackgroundColor::Blank,
+            Effect::inverted(),
+        );
         if self.style.vertical {
             printer.set_line(self.vert_half_height())
         } else {
-            printer.append_text(MIDDLE_PAD, Color::HexSame, Effect::Inverted);
+            printer.append_text(
+                MIDDLE_PAD,
+                Color::HexSame,
+                BackgroundColor::Blank,
+                Effect::inverted(),
+            );
         }
         let second_title = format_title(short_second);
-        printer.append_text(&second_title, Color::HexSame, Effect::Inverted);
+        printer.append_text(
+            &second_title,
+            Color::HexSame,
+            BackgroundColor::Blank,
+            Effect::inverted(),
+        );
     }
 
     /// Prints the bottom text containing key information
-    pub fn print_bottom_line<B: Backend>(
-        &self,
-        printer: &mut B,
-        addresses: (Option<usize>, Option<usize>),
-    ) {
+    pub fn print_bottom_line<B: Backend>(&self, printer: &mut B, addresses: [Option<usize>; 2]) {
         const BOTTOM_TEXT: &str =
             "F1/1: Help F2: Unalign F3: Align F4: Settings F6: Goto F7: Search";
         let print_addr = disp_bottom_addr(addresses, self.style.addr_width);
@@ -393,13 +423,19 @@ impl DoubleHexContext {
         };
         let line = self.full_height() - 1;
         printer.set_line(line);
-        printer.append_text(&info_text, Color::HexSame, Effect::Inverted);
+        printer.append_text(
+            &info_text,
+            Color::HexSame,
+            BackgroundColor::Blank,
+            Effect::inverted(),
+        );
         for line in self.full_height()..printer.size().1 {
             printer.set_line(line);
             printer.append_text(
                 &format!("{:width$}", " ", width = self.full_width()),
                 Color::HexSame,
-                Effect::None,
+                BackgroundColor::Blank,
+                Effect::none(),
             );
         }
     }
@@ -427,6 +463,7 @@ impl DoubleHexContext {
                 .saturating_add(1),
         );
     }
+    /// looks at where the autocorrelation peaks are and sets the column count
     pub fn auto_columns(&mut self, bytes: [&[u8]; 2]) {
         const MIN_AUTOCOR_WIDTH: usize = 6;
         const MAX_AUTOCOR_WIDTH: usize = 65535;

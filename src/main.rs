@@ -10,6 +10,7 @@ mod search;
 mod style;
 mod util;
 mod view;
+mod selection;
 use std::env;
 use std::ffi::OsString;
 use std::process::exit;

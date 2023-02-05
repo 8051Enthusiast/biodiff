@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{array::from_fn, ops::Range};
 
 use cursive::{Vec2, View};
 
@@ -9,6 +9,7 @@ use crate::{
     doublehex::{DoubleHexContext, DoubleHexLine},
     file::{FileContent, FileState},
     search::{Query, SearchContext, SearchPair, SearchResults},
+    selection::Selections,
     style::{ByteData, ColumnSetting},
 };
 
@@ -18,6 +19,7 @@ pub struct Unaligned {
     pub data: CompVec,
     filenames: (String, String),
     searches: SearchPair,
+    selection: Selections,
     index: isize,
     pub dh: DoubleHexContext,
 }
@@ -33,6 +35,7 @@ impl Unaligned {
             data,
             filenames: (first.name, second.name),
             searches: SearchPair(first.search, second.search),
+            selection: Selections::new(),
             index,
             dh,
         }
@@ -64,27 +67,34 @@ impl Unaligned {
     }
     /// Paints the cursor at the current position
     fn set_cursor<B: Backend>(&self, printer: &mut B, cursor_act: CursorActive) {
-        let cursor_index = self.cursor_index();
-        let addr = (
-            self.data.get_first_addr(cursor_index),
-            self.data.get_second_addr(cursor_index),
-        );
-        let (a, b) = self.data.get(cursor_index);
-        let [a, b] = [(&self.searches.0, addr.0, a), (&self.searches.1, addr.1, b)].map(
-            |(search, addr, byte)| {
-                let is_search_result = search.as_ref().map_or(false, |s| s.is_in_result(addr));
-                ByteData::maybe_new(byte, is_search_result)
-            },
-        );
+        let idx = self.cursor_index();
+        let addrs @ [addr0, addr1] = self.current_cursor_addresses();
+        let [sel0, sel1] = self
+            .selection
+            .selection_status([idx, idx - self.data.shift]);
+
+        let (a, b) = self.data.get(idx);
+        let [a, b] = [
+            (&self.searches.0, addr0, sel0, a),
+            (&self.searches.1, addr1, sel1, b),
+        ]
+        .map(|(search, addr, sel, byte)| {
+            let is_search_result = search.as_ref().map_or(false, |s| s.is_in_result(addr));
+            ByteData::new(byte, is_search_result, sel)
+        });
         self.dh
-            .set_doublehex_cursor(printer, cursor_act, (a, b), addr);
+            .set_doublehex_cursor(printer, cursor_act, (a, b), addrs);
     }
     /// changes the active cursor to be cursor_act and moves back into bounds if the active cursor is outside bounds
     fn change_active_cursor<B: Backend>(&mut self, printer: &mut B, cursor_act: CursorActive) {
         self.dh.cursor_act = cursor_act;
         self.move_back_into_bounds(printer);
         self.set_cursor(printer, cursor_act);
-        printer.refresh()
+        if self.selection.is_active() {
+            self.redraw(printer, false)
+        } else {
+            printer.refresh()
+        }
     }
     /// Converts the content of the CompVec into DoubleHexLines so they can be displayed
     fn get_content(&self) -> Vec<DoubleHexLine> {
@@ -92,10 +102,10 @@ impl Unaligned {
         for x in 0..self.dh.cursor.get_size_y() {
             // address of the nth line
             let base_addr = (x * self.dh.cursor.bytes_per_row()) as isize + self.index;
-            let address = (
+            let address = [
                 self.data.get_first_addr(base_addr),
                 self.data.get_second_addr(base_addr),
-            );
+            ];
             let mut bytes = Vec::new();
             for (i, (byte_a, byte_b)) in self
                 .data
@@ -104,19 +114,17 @@ impl Unaligned {
                 .enumerate()
             {
                 let current_index = base_addr + i as isize;
-                let [is_first_result, is_second_result] = self.searches.is_in_result([
+                let addresses = [
                     self.data.get_first_addr(current_index),
                     self.data.get_second_addr(current_index),
-                ]);
+                ];
+                let [is_first_result, is_second_result] = self.searches.is_in_result(addresses);
+                let [is_first_selected, is_second_selected] = self
+                    .selection
+                    .selection_status([current_index, current_index - self.data.shift]);
                 bytes.push((
-                    byte_a.map(|byte| ByteData {
-                        byte,
-                        is_search_result: is_first_result,
-                    }),
-                    byte_b.map(|byte| ByteData {
-                        byte,
-                        is_search_result: is_second_result,
-                    }),
+                    ByteData::new(byte_a, is_first_result, is_first_selected),
+                    ByteData::new(byte_b, is_second_result, is_second_selected),
                 ));
             }
 
@@ -146,11 +154,7 @@ impl Unaligned {
     fn print_bars<B: Backend>(&self, printer: &mut B) {
         self.dh
             .print_title_line(printer, " unaligned", &self.filenames.0, &self.filenames.1);
-        let cursor_index = self.cursor_index();
-        let addr = (
-            self.data.get_first_addr(cursor_index),
-            self.data.get_second_addr(cursor_index),
-        );
+        let addr = self.current_cursor_addresses();
         self.dh.print_bottom_line(printer, addr);
     }
     /// returns the bound of the index of the currently active cursor(s)
@@ -228,8 +232,11 @@ impl Unaligned {
             CursorActive::None => diff,
         };
         self.index += index_diff;
+        let idx = self.cursor_index();
+        self.selection
+            .update([idx, idx - self.data.shift], self.dh.cursor_act);
         // if they are moved independently, we cannot scroll
-        if !matches!(self.dh.cursor_act, CursorActive::Both) {
+        if !matches!(self.dh.cursor_act, CursorActive::Both) || self.selection.is_active() {
             self.redraw(printer, false);
         } else if let Some(scroll_amount) = self.dh.cursor.full_row_move(index_diff) {
             // scroll if we can
@@ -299,6 +306,17 @@ impl Unaligned {
         self.dh.auto_columns([&first, &second]);
         self.refresh(printer);
     }
+    pub fn start_selection<B: Backend>(&mut self, printer: &mut B) {
+        let idx = self.cursor_index();
+        self.selection
+            .start([idx, idx - self.data.shift], self.dh.cursor_act);
+        self.redraw(printer, false);
+    }
+    /// clears the selection with the currently active cursors
+    pub fn clear_selection<B: Backend>(&mut self, printer: &mut B) {
+        self.selection.clear(self.dh.cursor_act);
+        self.redraw(printer, false);
+    }
     /// Process a single action/event
     pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: Action) {
         match action {
@@ -309,6 +327,8 @@ impl Unaligned {
             Action::AddColumn => self.add_column(printer),
             Action::RemoveColumn => self.remove_column(printer),
             Action::AutoColumn => self.auto_column(printer),
+            Action::StartSelection => self.start_selection(printer),
+            Action::ClearSelection => self.clear_selection(printer),
             Action::ResetColumn => {
                 self.dh.style.column_count = ColumnSetting::Fit;
                 self.refresh(printer);
@@ -340,9 +360,9 @@ impl Unaligned {
             );
         }
         let bounds = if !right {
-            0..self.data.get_data().0.len()
+            0..self.data.get_data()[0].len()
         } else {
-            0..self.data.get_data().1.len()
+            0..self.data.get_data()[1].len()
         };
         if !bounds.contains(&pos) {
             return Err(format!(
@@ -356,16 +376,46 @@ impl Unaligned {
         );
         Ok(())
     }
+    /// get the file addresses of the current cursors
+    fn current_cursor_addresses(&self) -> [Option<usize>; 2] {
+        [
+            self.data.get_first_addr(self.cursor_index()),
+            self.data.get_second_addr(self.cursor_index()),
+        ]
+    }
+
+    fn current_cursor_addresses_clamped(&self) -> [usize; 2] {
+        let idx = [self.cursor_index(), self.cursor_index() - self.data.shift];
+        let lens = self.data.get_data().map(|x| x.len());
+        from_fn(|i| {
+            let len = lens[i];
+            if len == 0 {
+                return 0;
+            }
+            idx[i].clamp(0, len as isize - 1) as usize
+        })
+    }
+
+    pub fn selection_file_ranges(&self) -> [Option<Range<usize>>; 2] {
+        let ranges = self.selection.ranges(self.dh.cursor_act);
+        from_fn(|i| {
+            let len = self.data.get_data().map(|x| x.len())[i];
+            ranges[i].map(|[start, end]| {
+                let [start, end] = [start, end + 1].map(|x| (x as usize).clamp(0, len));
+                start..end
+            })
+        })
+    }
+
     /// get the search results and positions of all active cursors
     fn search_data(&self) -> Vec<(&Option<SearchResults>, usize, bool)> {
-        self.data
-            .get_first_addr(self.cursor_index())
+        let [first, second] = self.current_cursor_addresses();
+        first
             .map(|x| (&self.searches.0, x, false))
             .filter(|_| self.dh.cursor_act.is_first())
             .iter()
             .chain(
-                self.data
-                    .get_second_addr(self.cursor_index())
+                second
                     .map(|x| (&self.searches.1, x, true))
                     .filter(|_| self.dh.cursor_act.is_second())
                     .iter(),
@@ -464,7 +514,7 @@ impl Unaligned {
         (SearchContext, FileContent),
         Option<(SearchContext, FileContent)>,
     ) {
-        let (first, second) = self.data.get_data();
+        let [first, second] = self.data.get_data();
         self.searches
             .setup_search(query, self.dh.cursor_act, [first, second])
     }
@@ -474,32 +524,25 @@ impl Unaligned {
     }
     /// Turns the view into most of its parts
     pub fn destruct(self) -> Result<(FileState, FileState, DoubleHexContext), Self> {
-        let cursor_index = self.cursor_index();
         // for now we only return if the cursor is at a positions where both indexes are actually
         // inside the file
-        if let (Some(laddr), Some(raddr)) = (
-            self.data.get_first_addr(cursor_index),
-            self.data.get_second_addr(cursor_index),
-        ) {
-            let (lvec, rvec) = self.data.get_data();
-            Ok((
-                FileState {
-                    name: self.filenames.0,
-                    content: lvec,
-                    index: laddr,
-                    search: self.searches.0,
-                },
-                FileState {
-                    name: self.filenames.1,
-                    content: rvec,
-                    index: raddr,
-                    search: self.searches.1,
-                },
-                self.dh,
-            ))
-        } else {
-            Err(self)
-        }
+        let [laddr, raddr] = self.current_cursor_addresses_clamped();
+        let [lvec, rvec] = self.data.get_data();
+        Ok((
+            FileState {
+                name: self.filenames.0,
+                content: lvec,
+                index: laddr,
+                search: self.searches.0,
+            },
+            FileState {
+                name: self.filenames.1,
+                content: rvec,
+                index: raddr,
+                search: self.searches.1,
+            },
+            self.dh,
+        ))
     }
 }
 

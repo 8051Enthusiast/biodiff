@@ -3,28 +3,33 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
 
-use crate::backend::{Color, Effect};
+use crate::{
+    backend::{BackgroundColor, Color, Effect},
+    selection::SelectionStatus,
+};
 pub const FRONT_PAD: &str = " ";
 pub const MIDDLE_PAD: &str = " |";
 pub const SPACER_PERIOD: usize = 8;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct ByteData {
-    pub byte: u8,
+    pub byte: Option<u8>,
     pub is_search_result: bool,
+    pub is_selected: SelectionStatus,
 }
 
 impl ByteData {
-    pub fn maybe_new(byte: Option<u8>, is_search_result: bool) -> Option<Self> {
-        Some(ByteData {
-            byte: byte?,
+    pub fn new(byte: Option<u8>, is_search_result: bool, is_selected: SelectionStatus) -> Self {
+        ByteData {
+            byte: byte,
             is_search_result,
-        })
+            is_selected,
+        }
     }
 }
 
-pub fn byte(data: Option<ByteData>) -> Option<u8> {
-    data.map(|x| x.byte)
+pub fn byte(data: ByteData) -> Option<u8> {
+    data.byte
 }
 
 /// Contains `digits` digits of an address, with a space at the end
@@ -40,8 +45,8 @@ pub fn disp_addr(maddr: Option<usize>, digits: u8) -> String {
 }
 
 /// Formats the addresses that get displayed on the lower right of the screen
-pub fn disp_bottom_addr(addresses: (Option<usize>, Option<usize>), digits: u8) -> String {
-    let diff = if let (Some(a), Some(b)) = addresses {
+pub fn disp_bottom_addr(addresses: [Option<usize>; 2], digits: u8) -> String {
+    let diff = if let [Some(a), Some(b)] = addresses {
         let d = (b as isize).wrapping_sub(a as isize);
         if d < 0 {
             format!("(-{:0digits$x})", -d, digits = digits as usize)
@@ -58,7 +63,7 @@ pub fn disp_bottom_addr(addresses: (Option<usize>, Option<usize>), digits: u8) -
             format!("{:digits$}", " ", digits = digits as usize)
         }
     };
-    format!(" {}|{}{diff}", addr(addresses.0), addr(addresses.1))
+    format!(" {}|{}{diff}", addr(addresses[0]), addr(addresses[1]))
 }
 
 /// Contains two hex digits of a byte and a space behind it, or just three spaces for None
@@ -152,30 +157,48 @@ fn disp_roman(h: Option<u8>) -> String {
     format!("{s:>9} ")
 }
 
-pub fn byte_effect(x: Option<ByteData>) -> Effect {
-    x.filter(|x| x.is_search_result)
-        .map_or(Effect::None, |_| Effect::Bold)
+pub fn byte_effect(x: ByteData) -> Effect {
+    Effect {
+        inverted: false,
+        bold: x.is_search_result,
+    }
+}
+
+pub fn background_color(x: ByteData) -> BackgroundColor {
+    if x.is_selected.is_active() {
+        BackgroundColor::Highlight
+    } else {
+        BackgroundColor::Blank
+    }
+}
+
+pub fn spacer_background_color(x: ByteData, rtl: bool) -> BackgroundColor {
+    if x.is_selected.continues_on_right(rtl) {
+        BackgroundColor::Highlight
+    } else {
+        BackgroundColor::Blank
+    }
 }
 
 /// Insertions/Deletions are typically green, mismatches red and same bytes white
-fn color_from_bytes(a: Option<ByteData>, b: Option<ByteData>) -> Color {
-    match (a, b) {
-        (Some(a), Some(b)) if a.byte == b.byte => Color::HexSame,
+fn color_from_bytes(a: ByteData, b: ByteData) -> Color {
+    match (a.byte, b.byte) {
+        (Some(a), Some(b)) if a == b => Color::HexSame,
         (Some(_), Some(_)) => Color::HexDiff,
         (None, _) | (_, None) => Color::HexOneside,
     }
 }
 
 /// Insertions/Deletions are typically green, mismatches red and same bytes white
-fn color_secondary_from_bytes(a: Option<ByteData>, b: Option<ByteData>) -> Color {
-    match (a, b) {
-        (Some(a), Some(b)) if a.byte == b.byte => Color::HexSameSecondary,
+fn color_secondary_from_bytes(a: ByteData, b: ByteData) -> Color {
+    match (a.byte, b.byte) {
+        (Some(a), Some(b)) if a == b => Color::HexSameSecondary,
         (Some(_), Some(_)) => Color::HexDiffSecondary,
         (None, _) | (_, None) => Color::HexOnesideSecondary,
     }
 }
 /// Insertions/Deletions are typically green, mismatches red and same bytes white
-fn color_from_mixed_bytes(a: Option<ByteData>, b: Option<ByteData>) -> Color {
+fn color_from_mixed_bytes(a: ByteData, b: ByteData) -> Color {
     if matches!(byte(a), Some(b'!'..=b'~' | b' ' | b'\n' | b'\t' | b'\r')) {
         color_from_bytes(a, b)
     } else {
@@ -206,7 +229,7 @@ impl DisplayMode {
             Self::Braille => 2,
         }
     }
-    pub fn color(&self, a: Option<ByteData>, b: Option<ByteData>, row: usize) -> Color {
+    pub fn color(&self, a: ByteData, b: ByteData, row: usize) -> Color {
         match self {
             Self::HexAsciiMix => color_from_mixed_bytes(a, b),
             Self::Braille => {

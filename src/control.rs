@@ -26,6 +26,7 @@ use crate::{
 use std::{
     error::Error,
     fs::read_to_string,
+    ops::Range,
     path::PathBuf,
     sync::mpsc::{channel, Receiver, Sender},
 };
@@ -136,7 +137,7 @@ impl HexView {
         ))
     }
     /// Turns a hexview into an aligned view using the given algorithm parameters
-    fn into_aligned(self, algo: &AlignAlgorithm) -> HexView {
+    fn into_aligned(self, algo: &AlignAlgorithm, select: [Option<Range<usize>>; 2]) -> HexView {
         let (send, recv) = channel();
         match match self {
             // first destruct our old hexview into its parts
@@ -153,7 +154,7 @@ impl HexView {
                     dh.cursor = CursorState::new((dh.cursor.get_size_x(), dh.cursor.get_size_y()))
                 };
                 HexView::Aligned(
-                    view::Aligned::new(left, right, dh, algo, send.clone()),
+                    view::Aligned::new(left, right, dh, algo, select, send.clone()),
                     send,
                     recv,
                 )
@@ -182,6 +183,12 @@ impl HexView {
             HexView::Unaligned(ref mut u) => unaligned_cross(u, cross),
         }
     }
+    fn selection(&self) -> [Option<Range<usize>>; 2] {
+        match self {
+            HexView::Aligned(a, _, _) => a.selection_file_ranges(),
+            HexView::Unaligned(u) => u.selection_file_ranges(),
+        }
+    }
     /// control loop for crossbeam backend, switches the view between aligned and unaligned when
     /// requested and runs event loops
     fn process_cross(self, cross: &mut Cross, settings: &Settings) -> (Self, DelegateEvent) {
@@ -197,7 +204,8 @@ impl HexView {
                 }
                 DelegateEvent::SwitchToAlign => {
                     quit = None;
-                    view.into_aligned(&settings.algo)
+                    let select = view.selection();
+                    view.into_aligned(&settings.algo, select)
                 }
                 DelegateEvent::SwitchToUnalign => {
                     quit = None;

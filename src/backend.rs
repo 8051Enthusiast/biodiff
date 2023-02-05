@@ -7,7 +7,7 @@ use crossterm::{
     terminal,
 };
 use crossterm::{execute, queue};
-use cursive::{theme, Printer};
+use cursive::{reexports::enumset::EnumSet, theme, Printer};
 use std::{
     convert::{TryFrom, TryInto},
     io::{Cursor, Write},
@@ -52,6 +52,8 @@ pub enum Action {
     RemoveColumn,
     AutoColumn,
     ResetColumn,
+    StartSelection,
+    ClearSelection,
 }
 
 impl TryFrom<Event> for Action {
@@ -115,6 +117,8 @@ impl TryFrom<Event> for Action {
                 (KeyCode::Char('['), _) => Action::RemoveColumn,
                 (KeyCode::Char('='), _) => Action::AutoColumn,
                 (KeyCode::Char('0'), _) => Action::ResetColumn,
+                (KeyCode::Char('v'), _) => Action::StartSelection,
+                (KeyCode::Char('c'), _) => Action::ClearSelection,
                 _ => return Err(()),
             },
         )
@@ -151,7 +155,7 @@ pub trait Backend {
     /// moves to a position
     fn set_pos(&mut self, column: usize, line: usize);
     /// appends text with given text and color to current line
-    fn append_text(&mut self, text: &str, color: Color, effect: Effect);
+    fn append_text(&mut self, text: &str, color: Color, bg: BackgroundColor, effect: Effect);
     /// returns wether the terminal has the ability to scroll
     fn can_scroll(&self) -> bool;
     /// scrolls amount (positive moves content of terminal up)
@@ -190,7 +194,7 @@ impl Color {
         }
     }
     /// Converts to a cursive color (with black background)
-    fn to_cursiv(self) -> theme::ColorStyle {
+    fn to_cursiv(self, bg: BackgroundColor) -> theme::ColorStyle {
         let col = match self {
             Color::Unimportant => theme::Color::Light(theme::BaseColor::Black),
             Color::HexSame => theme::Color::Light(theme::BaseColor::White),
@@ -200,35 +204,73 @@ impl Color {
             Color::HexDiffSecondary => theme::Color::Dark(theme::BaseColor::Red),
             Color::HexOnesideSecondary => theme::Color::Dark(theme::BaseColor::Green),
         };
-        theme::ColorStyle::new(col, theme::Color::Dark(theme::BaseColor::Black))
+        theme::ColorStyle::new(col, bg.to_cursiv())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BackgroundColor {
+    Blank,
+    Highlight,
+}
+
+impl BackgroundColor {
+    fn to_cross(self) -> CrossColor {
+        match self {
+            BackgroundColor::Blank => CrossColor::Black,
+            BackgroundColor::Highlight => CrossColor::DarkGrey,
+        }
+    }
+    fn to_cursiv(self) -> theme::Color {
+        match self {
+            BackgroundColor::Blank => theme::Color::Dark(theme::BaseColor::Black),
+            BackgroundColor::Highlight => theme::Color::Light(theme::BaseColor::Black),
+        }
     }
 }
 
 /// An effect, for now either reverse video or normal
 #[derive(Clone, Copy, Debug)]
-pub enum Effect {
-    Inverted,
-    Bold,
-    None,
+pub struct Effect {
+    pub inverted: bool,
+    pub bold: bool,
 }
-
 impl Effect {
-    fn to_cross(self) -> style::Attribute {
-        match self {
-            // this assumes that no other effects are in effect
-            // so change this when adding others
-            // note that Reset also resets colors
-            Effect::None => Attribute::Reset,
-            Effect::Inverted => Attribute::Reverse,
-            Effect::Bold => Attribute::Bold,
+    pub fn none() -> Self {
+        Effect {
+            inverted: false,
+            bold: false,
         }
     }
-    fn to_cursiv(self) -> theme::Effect {
-        match self {
-            Effect::None => theme::Effect::Simple,
-            Effect::Inverted => theme::Effect::Reverse,
-            Effect::Bold => theme::Effect::Bold,
+    pub fn inverted() -> Self {
+        Effect {
+            inverted: true,
+            bold: false,
         }
+    }
+    fn to_cross(self) -> style::Attributes {
+        let mut ret = style::Attributes::from(if self.inverted {
+            Attribute::Reverse
+        } else {
+            Attribute::NoReverse
+        });
+        ret = ret
+            | if self.bold {
+                Attribute::Bold
+            } else {
+                Attribute::NoBold
+            };
+        ret
+    }
+    fn to_cursiv(self) -> EnumSet<theme::Effect> {
+        let mut ret = EnumSet::new();
+        if self.inverted {
+            ret.insert(theme::Effect::Reverse);
+        }
+        if self.bold {
+            ret.insert(theme::Effect::Bold);
+        }
+        ret
     }
 }
 
@@ -237,7 +279,8 @@ pub struct Cross {
     stdout: Stdout,
     buffer: Cursor<Vec<u8>>,
     prev_color: Option<CrossColor>,
-    prev_effect: Option<Attribute>,
+    prev_bg: Option<CrossColor>,
+    prev_effect: Option<style::Attributes>,
 }
 
 impl Cross {
@@ -247,6 +290,7 @@ impl Cross {
             stdout: std::io::stdout(),
             buffer: Cursor::new(Vec::new()),
             prev_color: None,
+            prev_bg: None,
             prev_effect: None,
         }
     }
@@ -318,15 +362,14 @@ impl Backend for Cross {
         .unwrap_or_else(quit_with_error("Could not move cursor"));
     }
 
-    fn append_text(&mut self, text: &str, color: Color, effect: Effect) {
+    fn append_text(&mut self, text: &str, color: Color, bg: BackgroundColor, effect: Effect) {
         let attribute = effect.to_cross();
         // try to optimize by not printing the color if it hasn't changed
         if Some(attribute) != self.prev_effect {
             queue!(
                 self.buffer,
-                style::SetAttribute(Attribute::Reset),
-                style::SetAttribute(attribute),
-                style::SetBackgroundColor(CrossColor::Black)
+                style::SetAttributes(attribute | Attribute::Reset),
+                style::SetBackgroundColor(bg.to_cross())
             )
             .unwrap_or_else(quit_with_error("Could not write out text"));
             self.prev_effect = Some(attribute);
@@ -338,6 +381,12 @@ impl Backend for Cross {
             queue!(self.buffer, style::SetForegroundColor(cross_color),)
                 .unwrap_or_else(quit_with_error("Could not write out text"));
             self.prev_color = Some(cross_color);
+        }
+        let bg_color = bg.to_cross();
+        if Some(bg_color) != self.prev_bg {
+            queue!(self.buffer, style::SetBackgroundColor(bg_color),)
+                .unwrap_or_else(quit_with_error("Could not write out text"));
+            self.prev_bg = Some(bg_color);
         }
         queue!(self.buffer, style::Print(text))
             .unwrap_or_else(quit_with_error("Could not write out text"));
@@ -393,7 +442,7 @@ impl Backend for Cross {
     }
 
     fn clear(&mut self) {
-        self.prev_effect = Some(Attribute::NoReverse);
+        self.prev_effect = Some(Attribute::NoReverse.into());
         queue!(
             self.buffer,
             style::SetAttribute(Attribute::NoReverse),
@@ -428,11 +477,12 @@ impl<'a, 'b, 'c> Backend for Cursiv<'a, 'b, 'c> {
         self.current_pos = (column, line)
     }
 
-    fn append_text(&mut self, text: &str, color: Color, effect: Effect) {
+    fn append_text(&mut self, text: &str, color: Color, bg: BackgroundColor, effects: Effect) {
         let len = text.width();
-        let style = theme::Style::none()
-            .combine(color.to_cursiv())
-            .combine(effect.to_cursiv());
+        let mut style = theme::Style::none().combine(color.to_cursiv(bg));
+        for effect in effects.to_cursiv() {
+            style = style.combine(effect)
+        }
         self.printer
             .with_style(style, |p| p.print(self.current_pos, text));
         self.current_pos.0 += len;
@@ -464,7 +514,7 @@ impl Backend for Dummy {
 
     fn set_pos(&mut self, _: usize, _: usize) {}
 
-    fn append_text(&mut self, _: &str, _: Color, _: Effect) {}
+    fn append_text(&mut self, _: &str, _: Color, _: BackgroundColor, _: Effect) {}
 
     fn can_scroll(&self) -> bool {
         false

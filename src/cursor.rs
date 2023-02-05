@@ -207,6 +207,15 @@ impl CursorActive {
             Self::First | Self::None => false,
         }
     }
+    /// List of whether view is enabled
+    pub fn is_active(&self) -> [bool; 2] {
+        match self {
+            Self::Both => [true, true],
+            Self::First => [true, false],
+            Self::Second => [false, true],
+            Self::None => [false, false],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

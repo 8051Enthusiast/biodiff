@@ -1,4 +1,4 @@
-use std::{ops::Range, sync::mpsc::Sender};
+use std::{array::from_fn, ops::Range, sync::mpsc::Sender};
 
 use cursive::{Vec2, View};
 
@@ -10,6 +10,7 @@ use crate::{
     doublehex::{DoubleHexContext, DoubleHexLine},
     file::{FileContent, FileState},
     search::{Query, SearchContext, SearchPair, SearchResults},
+    selection::Selections,
     style::{ByteData, ColumnSetting},
 };
 
@@ -33,7 +34,8 @@ pub struct Aligned {
     data: DoubleVec<AlignElement>,
     filenames: (String, String),
     searches: SearchPair,
-    original: (FileContent, FileContent),
+    original: [FileContent; 2],
+    selection: Selections,
     index: isize,
     pub dh: DoubleHexContext,
 }
@@ -48,18 +50,25 @@ impl Aligned {
         second: FileState,
         dh: DoubleHexContext,
         algo: &AlignAlgorithm,
+        sel: [Option<Range<usize>>; 2],
         sender: Sender<AlignedMessage>,
     ) -> Self {
         let index = -(dh.cursor.get_index() as isize);
         let data = DoubleVec::new();
         let first_arc = first.content.clone();
         let second_arc = second.content.clone();
-        algo.start_align(first_arc, second_arc, (first.index, second.index), sender);
+        algo.start_align_with_selection(
+            [first_arc, second_arc],
+            sel,
+            [first.index, second.index],
+            sender,
+        );
         Aligned {
             data,
             filenames: (first.name, second.name),
-            original: (first.content, second.content),
+            original: [first.content, second.content],
             searches: SearchPair(first.search, second.search),
+            selection: Selections::new(),
             index,
             dh,
         }
@@ -73,7 +82,11 @@ impl Aligned {
     fn change_active_cursor<B: Backend>(&mut self, printer: &mut B, cursor_act: CursorActive) {
         self.dh.cursor_act = cursor_act;
         self.set_cursor(printer, cursor_act);
-        printer.refresh()
+        if self.selection.is_active() {
+            self.redraw(printer, false)
+        } else {
+            printer.refresh()
+        }
     }
     /// Gets a useful form of the information contained in the alignement data for printing.
     fn get_content(&self) -> Vec<DoubleHexLine> {
@@ -82,28 +95,32 @@ impl Aligned {
             // address of current line to be converted
             let base_addr = (x * self.dh.cursor.bytes_per_row()) as isize + self.index;
             let mut bytes = Vec::new();
-            for alignel in self
+            for (i, alignel) in self
                 .data
                 .get_range(base_addr..base_addr + self.dh.cursor.get_size_x() as isize)
+                .into_iter()
+                .enumerate()
             {
                 let malignel = match alignel {
                     Some(x) => x,
                     None => {
-                        bytes.push((None, None));
+                        bytes.push((ByteData::default(), ByteData::default()));
                         continue;
                     }
                 };
-                let [is_first_result, is_second_result] = self
-                    .searches
-                    .is_in_result([malignel.xaddr, malignel.yaddr].map(Some));
-                let first = ByteData::maybe_new(malignel.xbyte, is_first_result);
-                let second = ByteData::maybe_new(malignel.ybyte, is_second_result);
+                let addresses = [malignel.xaddr, malignel.yaddr].map(Some);
+                let [is_first_result, is_second_result] = self.searches.is_in_result(addresses);
+                let idx = base_addr + i as isize;
+                let [is_first_selected, is_second_selected] =
+                    self.selection.selection_status([idx, idx]);
+                let first = ByteData::new(malignel.xbyte, is_first_result, is_first_selected);
+                let second = ByteData::new(malignel.ybyte, is_second_result, is_second_selected);
                 bytes.push((first, second));
             }
             let address = self
                 .data
                 .get(base_addr)
-                .map(|alignel| (Some(alignel.xaddr), Some(alignel.yaddr)))
+                .map(|alignel| [Some(alignel.xaddr), Some(alignel.yaddr)])
                 .unwrap_or_default();
             content.push(DoubleHexLine { address, bytes });
         }
@@ -132,24 +149,24 @@ impl Aligned {
     }
     /// Paints the cursor at the current position
     fn set_cursor<B: Backend>(&self, printer: &mut B, cursor_act: CursorActive) {
-        let cursor_index = self.cursor_index();
+        let idx = self.cursor_index();
         let (a, b) = self
             .data
-            .get(cursor_index)
+            .get(idx)
             .map(|alignel| (alignel.xbyte, alignel.ybyte))
             .unwrap_or_default();
         let addresses = self
-            .data
-            .get(cursor_index)
-            .map(|alignel| (Some(alignel.xaddr), Some(alignel.yaddr)))
+            .current_cursor_addresses()
+            .map(|x| x.map(Some))
             .unwrap_or_default();
+        let [sel0, sel1] = self.selection.selection_status([idx, idx]);
         let [a, b] = [
-            (&self.searches.0, addresses.0, a),
-            (&self.searches.1, addresses.1, b),
+            (&self.searches.0, addresses[0], sel0, a),
+            (&self.searches.1, addresses[1], sel1, b),
         ]
-        .map(|(search, addr, byte)| {
+        .map(|(search, addr, sel, byte)| {
             let is_search_result = search.as_ref().map_or(false, |s| s.is_in_result(addr));
-            ByteData::maybe_new(byte, is_search_result)
+            ByteData::new(byte, is_search_result, sel)
         });
         self.dh
             .set_doublehex_cursor(printer, cursor_act, (a, b), addresses);
@@ -159,11 +176,9 @@ impl Aligned {
     fn print_bars<B: Backend>(&self, printer: &mut B) {
         self.dh
             .print_title_line(printer, " aligned", &self.filenames.0, &self.filenames.1);
-        let cursor_index = self.cursor_index();
         let addresses = self
-            .data
-            .get(cursor_index)
-            .map(|alignel| (Some(alignel.xaddr), Some(alignel.yaddr)))
+            .current_cursor_addresses()
+            .map(|x| x.map(Some))
             .unwrap_or_default();
         self.dh.print_bottom_line(printer, addresses);
     }
@@ -181,7 +196,11 @@ impl Aligned {
         };
         let index_diff = self.dh.cursor.mov(movement, relative_bounds);
         self.index += index_diff;
-        if let Some(scroll_amount) = self.dh.cursor.full_row_move(index_diff) {
+        if self.selection.is_active() {
+            let idx = self.cursor_index();
+            self.selection.update([idx, idx], self.dh.cursor_act);
+            self.redraw(printer, false);
+        } else if let Some(scroll_amount) = self.dh.cursor.full_row_move(index_diff) {
             let content = self.get_content();
             self.dh
                 .print_doublehex_scrolled(&content, printer, scroll_amount);
@@ -264,6 +283,37 @@ impl Aligned {
             .get(self.cursor_index())
             .map(|x| [x.xaddr, x.yaddr])
     }
+
+    pub fn selection_file_ranges(&self) -> [Option<Range<usize>>; 2] {
+        let ranges = self.selection.ranges(self.dh.cursor_act);
+        let bounds = self.data.bounds();
+        if bounds.is_empty() {
+            return [None, None];
+        }
+        from_fn(|i| {
+            ranges[i].map(|range| {
+                let [start, end] = range.map(|idx| idx.clamp(bounds.start, bounds.end - 1));
+                let start = self
+                    .data
+                    .get(start)
+                    .map(|x| if i == 0 { x.xaddr } else { x.yaddr })
+                    .unwrap();
+                let end = self
+                    .data
+                    .get(end)
+                    .map(|x| {
+                        if i == 0 {
+                            x.xaddr + x.xbyte.is_some() as usize
+                        } else {
+                            x.yaddr + x.ybyte.is_some() as usize
+                        }
+                    })
+                    .unwrap();
+                start..end
+            })
+        })
+    }
+
     /// get the search results and positions of all active cursors
     fn search_data(&self, forward: bool) -> Vec<(&Option<SearchResults>, usize, bool)> {
         let [first, second] = self
@@ -369,7 +419,7 @@ impl Aligned {
         (SearchContext, FileContent),
         Option<(SearchContext, FileContent)>,
     ) {
-        let files = [self.original.0.clone(), self.original.1.clone()];
+        let files = [self.original[0].clone(), self.original[1].clone()];
         self.searches.setup_search(query, self.dh.cursor_act, files)
     }
     /// Inreases the column count by one and refreshes the view
@@ -388,6 +438,16 @@ impl Aligned {
         let [first, second] = self.bytes_in_view();
         self.dh.auto_columns([&first, &second]);
         self.refresh(printer);
+    }
+    pub fn start_selection<B: Backend>(&mut self, printer: &mut B) {
+        let idx = self.cursor_index();
+        self.selection.start([idx, idx], self.dh.cursor_act);
+        self.redraw(printer, false);
+    }
+    /// clears the selection with the currently active cursors
+    pub fn clear_selection<B: Backend>(&mut self, printer: &mut B) {
+        self.selection.clear(self.dh.cursor_act);
+        self.redraw(printer, false);
     }
     /// Process move events
     pub fn process_move<B: Backend>(&mut self, printer: &mut B, action: Action) {
@@ -422,6 +482,8 @@ impl Aligned {
             Action::AddColumn => self.add_column(printer),
             Action::RemoveColumn => self.remove_column(printer),
             Action::AutoColumn => self.auto_column(printer),
+            Action::StartSelection => self.start_selection(printer),
+            Action::ClearSelection => self.clear_selection(printer),
             Action::ResetColumn => {
                 self.dh.style.column_count = ColumnSetting::Fit;
                 self.refresh(printer);
@@ -458,21 +520,24 @@ impl Aligned {
     pub fn destruct(self) -> Result<(FileState, FileState, DoubleHexContext), Self> {
         // we return the original view in case the cursor is outside the files
         match (self.data.get(self.cursor_index())).map(|a| (a.xaddr, a.yaddr)) {
-            Some((xaddr, yaddr)) => Ok((
-                FileState {
-                    name: self.filenames.0,
-                    content: self.original.0,
-                    index: xaddr,
-                    search: self.searches.0,
-                },
-                FileState {
-                    name: self.filenames.1,
-                    content: self.original.1,
-                    index: yaddr,
-                    search: self.searches.1,
-                },
-                self.dh,
-            )),
+            Some((xaddr, yaddr)) => {
+                let [original0, original1] = self.original;
+                Ok((
+                    FileState {
+                        name: self.filenames.0,
+                        content: original0,
+                        index: xaddr,
+                        search: self.searches.0,
+                    },
+                    FileState {
+                        name: self.filenames.1,
+                        content: original1,
+                        index: yaddr,
+                        search: self.searches.1,
+                    },
+                    self.dh,
+                ))
+            }
             None => Err(self),
         }
     }

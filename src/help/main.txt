@@ -27,6 +27,8 @@ Keys:
  * '0': Set columns to fit screen
  * '=': Attempt to align column number to the repetitions of bytes
         currently visible by doing an autocorrelation
+* 'v': Start selection at cursor(s)
+* 'c': Clear selection at cursor(s)
 
 Unaligned View
 --------------
@@ -41,6 +43,12 @@ or bottom side.
 The primary view and secondary view can by moved independently by first
 choosing active views with pressing the 'a'/'s'/'d' for
 primary/both/secondary respectively.
+
+By choosing one active view and then marking a selection with 'v',
+pressing F3 will search for a glocal alignment with the pattern
+being the selection in the active view and the text being the
+whole other view. After finding the initial alignment, it will
+be extended in both directions.
 
 Aligned View
 ------------

@@ -137,8 +137,8 @@ impl CompVec {
         }
     }
     /// Returns the two arrays
-    pub fn get_data(&self) -> (FileContent, FileContent) {
-        (self.xvec.clone(), self.yvec.clone())
+    pub fn get_data(&self) -> [FileContent; 2] {
+        [self.xvec.clone(), self.yvec.clone()]
     }
     /// Returns the possible indexes where the first vector has data
     pub fn first_bound(&self) -> Range<isize> {

@@ -100,7 +100,7 @@ fn on_search(siv: &mut Cursive) -> Result<(), String> {
         let sink = siv.cb_sink().clone();
         let send = util::rate_limit_channel(
             SEARCH_BUFFER_SIZE,
-            Duration::from_millis(100),
+            Duration::from_millis(200),
             search_result_receiver(sink, context.clone()),
         );
         context.start_search(send, content)
