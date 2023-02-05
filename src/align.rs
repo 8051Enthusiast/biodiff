@@ -144,6 +144,11 @@ impl AlignAlgorithm {
                 return self.start_align(file0, file1, (addr[0], addr[1]), sender);
             }
             [Some(x), None] | [None, Some(x)] => {
+                if x.is_empty() {
+                    // selection is empty, does not really make sense to do glocal alignment
+                    let [file0, file1] = files;
+                    return self.start_align(file0, file1, (addr[0], addr[1]), sender);
+                }
                 let right = selection[1].is_some();
                 (
                     x.clone(),
