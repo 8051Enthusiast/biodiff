@@ -48,7 +48,7 @@ impl From<AlignMode> for InternalMode {
 }
 
 trait Align {
-    fn align(algo: &AlignAlgorithm, mode: InternalMode, x: &[u8], y: &[u8]) -> Vec<Op>;
+    fn align(&self, algo: &AlignAlgorithm, mode: InternalMode, x: &[u8], y: &[u8]) -> Vec<Op>;
 }
 
 /// Determines whether to use the banded variant of the algorithm with given k-mer length
@@ -154,7 +154,7 @@ impl AlignAlgorithm {
             return vec![Op::Match; x.len()];
         }
         if self.band == Banded::Normal {
-            RustBio::align(&self, mode, &x, &y)
+            RustBio.align(&self, mode, &x, &y)
         } else {
             align_banded(&self, mode, &x, &y)
         }

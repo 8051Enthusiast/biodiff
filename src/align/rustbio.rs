@@ -30,6 +30,7 @@ pub struct RustBio;
 
 impl Align for RustBio {
     fn align(
+        &self,
         algo: &AlignAlgorithm,
         mode: InternalMode,
         x: &[u8],
@@ -49,7 +50,7 @@ pub fn align_banded(
     y: &[u8],
 ) -> Vec<AlignmentOperation> {
     let (kmer, window) = match algo.band {
-        super::Banded::Normal => return RustBio::align(algo, mode, x, y),
+        super::Banded::Normal => return RustBio.align(algo, mode, x, y),
         super::Banded::Banded { kmer, window } => (kmer, window),
     };
     let scoring = scorer(algo, mode);
