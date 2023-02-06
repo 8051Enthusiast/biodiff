@@ -249,17 +249,13 @@ impl Effect {
         }
     }
     fn to_cross(self) -> style::Attributes {
-        let mut ret = style::Attributes::from(if self.inverted {
-            Attribute::Reverse
-        } else {
-            Attribute::NoReverse
-        });
-        ret = ret
-            | if self.bold {
-                Attribute::Bold
-            } else {
-                Attribute::NoBold
-            };
+        let mut ret = style::Attributes::default();
+        if self.inverted {
+            ret = ret | Attribute::Reverse
+        };
+        if self.bold {
+            ret = ret | Attribute::Bold
+        }
         ret
     }
     fn to_cursiv(self) -> EnumSet<theme::Effect> {
@@ -368,13 +364,15 @@ impl Backend for Cross {
         if Some(attribute) != self.prev_effect {
             queue!(
                 self.buffer,
-                style::SetAttributes(attribute | Attribute::Reset),
+                style::SetAttribute(Attribute::Reset),
+                style::SetAttributes(attribute),
                 style::SetBackgroundColor(bg.to_cross())
             )
             .unwrap_or_else(quit_with_error("Could not write out text"));
             self.prev_effect = Some(attribute);
             // because the attribute is Reset, then we also need to set the color again
             self.prev_color = None;
+            self.prev_bg = None;
         }
         let cross_color = color.to_cross();
         if Some(cross_color) != self.prev_color {
