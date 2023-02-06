@@ -9,10 +9,10 @@ Keys:
  * 'a', 's', 'd': Choose active cursor
                   primary/both/secondary view
  * 'o' (Unaligned View): set offset between unaligned files
- * shift+down or space: Jump to the next difference
- * shift+up: Jump to the previous difference
- * ctrl+down: Jump to the next inserted/deleted byte
- * ctrl+up: Jump to the previous inserted/deleted byte
+ * shift+down arrow/'j' or space: Jump to the next difference
+ * shift+up arrow/'k': Jump to the previous difference
+ * ctrl+down arrow/'j': Jump to the next inserted/deleted byte
+ * ctrl+up arrow/'k': Jump to the previous inserted/deleted byte
  * F1 or 1: View Help
  * F2 or 2: View Unaligned
  * F3 or 3: View Aligned
