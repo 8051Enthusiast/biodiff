@@ -139,7 +139,7 @@ impl AlignAlgorithm {
                 (
                     x.clone(),
                     selection[1].is_some(),
-                    addr[!right as usize] != x.start,
+                    addr[right as usize] != x.start,
                 )
             }
         };
