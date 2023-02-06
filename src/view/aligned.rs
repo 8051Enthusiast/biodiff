@@ -435,7 +435,22 @@ impl Aligned {
     /// Sets the column count to the peak of the autocorrelation of
     /// the bytes in the current view and refreshes the view
     pub fn auto_column<B: Backend>(&mut self, printer: &mut B) {
-        let [first, second] = self.bytes_in_view();
+        let selection = self.selection_file_ranges();
+        let data = self.original.clone();
+        let [mut first, mut second] = if selection.iter().any(|x| x.is_some()) {
+            self.clear_selection(printer);
+            from_fn(|i| Some(data[i][selection[i].clone()?].to_vec()))
+                .map(|x| x.unwrap_or_default())
+        } else {
+            self.bytes_in_view()
+        };
+        // set vectors to be empty if the cursor is not active
+        if !self.dh.cursor_act.is_first() {
+            first = Vec::new();
+        }
+        if !self.dh.cursor_act.is_second() {
+            second = Vec::new();
+        }
         self.dh.auto_columns([&first, &second]);
         self.refresh(printer);
     }

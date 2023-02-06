@@ -23,12 +23,13 @@ Keys:
  * 'N': Jump to previous search result
  * Home: Jump to first address
  * End: Jump to last address
+* 'v': Start selection at cursor(s)
+* 'c': Clear selection at cursor(s)
  * '[' and ']': Remove or add a hex column
  * '0': Set columns to fit screen
  * '=': Attempt to align column number to the repetitions of bytes
-        currently visible by doing an autocorrelation
-* 'v': Start selection at cursor(s)
-* 'c': Clear selection at cursor(s)
+        currently visible (or if selected, the selected range)
+        by doing an autocorrelation
 
 Unaligned View
 --------------
