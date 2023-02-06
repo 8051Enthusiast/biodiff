@@ -1,4 +1,4 @@
-use std::ffi::{c_int, CStr};
+use std::{ffi::c_int, marker::PhantomData};
 
 use wfa2_sys::*;
 
@@ -50,6 +50,44 @@ fn settings(
 
 pub struct Wfa2;
 
+pub struct Aligner<'a>(*mut wavefront_aligner_t, PhantomData<&'a ()>);
+
+impl<'a> Aligner<'a> {
+    fn new(settings: &mut wavefront_aligner_attr_t, x: &[u8], y: &[u8]) -> Self {
+        let aligner = unsafe { wavefront_aligner_new(settings) };
+        if aligner == std::ptr::null_mut() {
+            panic!("could not create aligner");
+        }
+        unsafe {
+            wavefront_align(
+                aligner,
+                x.as_ptr() as *const i8,
+                x.len() as c_int,
+                y.as_ptr() as *const i8,
+                y.len() as c_int,
+            )
+        };
+        Self(aligner, PhantomData)
+    }
+    unsafe fn ops(&self) -> &[u8] {
+        let cigar = (*self.0).cigar.as_ref().unwrap();
+        let slice = cigar_op_slice(cigar);
+        slice
+    }
+}
+
+impl<'a> Drop for Aligner<'a> {
+    fn drop(&mut self) {
+        unsafe { wavefront_aligner_delete(self.0) };
+    }
+}
+
+unsafe fn cigar_op_slice<'a>(cigar: &'a cigar_t) -> &'a [u8] {
+    let begin_ptr = (cigar.operations as *const u8).offset((*cigar).begin_offset as isize);
+    let len = cigar.end_offset - cigar.begin_offset;
+    std::slice::from_raw_parts(begin_ptr, len as usize)
+}
+
 impl Align for Wfa2 {
     fn align(
         &self,
@@ -59,32 +97,18 @@ impl Align for Wfa2 {
         y: &[u8],
     ) -> Vec<bio::alignment::AlignmentOperation> {
         let mut align_attr = settings(algo, mode, x.len(), y.len());
-        let aligner =
-            unsafe { wavefront_aligner_new(&mut align_attr as *mut wavefront_aligner_attr_t) };
-        unsafe {
-            wavefront_align(
-                aligner,
-                x.as_ptr() as *const i8,
-                x.len() as c_int,
-                y.as_ptr() as *const i8,
-                y.len() as c_int,
-            );
-        }
-        let cigar = unsafe { CStr::from_ptr((*(*aligner).cigar).operations) }
-            .to_str()
-            .unwrap();
-        //eprintln!("{}", cigar);
+        let aligner = Aligner::new(&mut align_attr, x, y);
         let mut ret = vec![];
-        for c in cigar.chars() {
-            match c {
-                'M' => ret.push(bio::alignment::AlignmentOperation::Match),
-                'I' => ret.push(bio::alignment::AlignmentOperation::Del),
-                'D' => ret.push(bio::alignment::AlignmentOperation::Ins),
-                'X' => ret.push(bio::alignment::AlignmentOperation::Subst),
-                _ => panic!("Unknown cigar operation: {}", c),
+        let slice = unsafe { aligner.ops() };
+        for &c in slice {
+            match c as u8 {
+                b'M' => ret.push(bio::alignment::AlignmentOperation::Match),
+                b'I' => ret.push(bio::alignment::AlignmentOperation::Del),
+                b'D' => ret.push(bio::alignment::AlignmentOperation::Ins),
+                b'X' => ret.push(bio::alignment::AlignmentOperation::Subst),
+                _ => panic!("unknown cigar operation: {c:x}"),
             }
         }
-        unsafe { wavefront_aligner_delete(aligner) };
         ret
     }
 }
