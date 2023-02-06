@@ -242,11 +242,8 @@ impl Unaligned {
             // scroll if we can
             let content = self.get_content();
             self.dh
-                .print_doublehex_scrolled(&content, printer, scroll_amount);
+                .print_doublehex_scrolled(&content, printer, scroll_amount, |p| self.print_bars(p));
             self.set_cursor(printer, self.dh.cursor_act);
-            if scroll_amount != 0 {
-                self.print_bars(printer);
-            }
             printer.refresh();
         } else {
             self.redraw(printer, false);

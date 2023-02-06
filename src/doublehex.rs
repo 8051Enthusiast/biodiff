@@ -217,6 +217,7 @@ impl DoubleHexContext {
         content: &[DoubleHexLine],
         backend: &mut B,
         scroll_amount: isize,
+        print_bars: impl FnOnce(&mut B)
     ) {
         let rows = self.cursor.get_size_y();
         if scroll_amount == 0 {
@@ -229,11 +230,19 @@ impl DoubleHexContext {
             return self.print_doublehex_screen(content, backend);
         }
         backend.scroll(scroll_amount);
-        for line in if scroll_amount > 0 {
-            (rows - scroll_amount as usize)..rows
-        } else {
-            0..(-scroll_amount) as usize
-        } {
+        // we print bars before doing anything else to reduce flickering
+        if scroll_amount != 0 {
+            print_bars(backend);
+        }
+        for line in (rows - scroll_amount.unsigned_abs())..rows {
+            // note that the lines where the previous bars were scrolled to
+            // are overwritten in the first iteration of this loop to further
+            // reduce flickering
+            let line = if scroll_amount > 0 {
+                line
+            } else {
+                rows - line - 1
+            };
             if self.style.vertical {
                 content[line].print_vert(
                     backend,
