@@ -217,7 +217,7 @@ impl DoubleHexContext {
         content: &[DoubleHexLine],
         backend: &mut B,
         scroll_amount: isize,
-        print_bars: impl FnOnce(&mut B)
+        print_bars: impl FnOnce(&mut B),
     ) {
         let rows = self.cursor.get_size_y();
         if scroll_amount == 0 {
@@ -226,6 +226,7 @@ impl DoubleHexContext {
         if !backend.can_scroll()
             || !self.style.mode.can_scroll()
             || scroll_amount.unsigned_abs() > content.len()
+            || self.style.no_scroll
         {
             return self.print_doublehex_screen(content, backend);
         }

@@ -1,28 +1,8 @@
 use super::*;
 fn apply_style(siv: &mut Cursive) {
-    let ascii_col = siv
-        .find_name::<Checkbox>("ascii_col")
-        .expect("could not find ascii checkbox in settings")
-        .is_checked();
-    let bars_col = siv
-        .find_name::<Checkbox>("bars_col")
-        .expect("could not find bars checkbox in settings")
-        .is_checked();
-    let vertical = siv
-        .find_name::<Checkbox>("vertical")
-        .expect("Could not find vertical checkbox in settings")
-        .is_checked();
-    let spacer = siv
-        .find_name::<Checkbox>("spacer")
-        .expect("Could not find spacer checkbox in settings")
-        .is_checked();
-    let right_to_left = siv
-        .find_name::<Checkbox>("right_to_left")
-        .expect("Could not find right_to_left checkbox in settings")
-        .is_checked();
     let column_count = siv
         .find_name::<EditView>("column_count")
-        .expect("Could not find column count edit view")
+        .unwrap()
         .get_content();
     let column_count = match column_count.as_str() {
         "" => ColumnSetting::Fit,
@@ -38,6 +18,15 @@ fn apply_style(siv: &mut Cursive) {
             }
         },
     };
+    let ascii_col = siv.find_name::<Checkbox>("ascii_col").unwrap().is_checked();
+    let bars_col = siv.find_name::<Checkbox>("bars_col").unwrap().is_checked();
+    let vertical = siv.find_name::<Checkbox>("vertical").unwrap().is_checked();
+    let spacer = siv.find_name::<Checkbox>("spacer").unwrap().is_checked();
+    let right_to_left = siv
+        .find_name::<Checkbox>("right_to_left")
+        .unwrap()
+        .is_checked();
+    let no_scroll = siv.find_name::<Checkbox>("no_scroll").unwrap().is_checked();
     let mode = number_to_stylemode(
         &siv.find_name::<SelectView<usize>>("display mode")
             .expect("Could not find display mode select view")
@@ -57,6 +46,7 @@ fn apply_style(siv: &mut Cursive) {
         right_to_left,
         column_count,
         addr_width,
+        no_scroll,
     };
     settings.style = new_style;
     on_hexview(
@@ -131,6 +121,7 @@ pub fn style(siv: &mut Cursive) -> impl View {
     // * hex spacers
     // * right to left mode
     let left_side = ListView::new()
+        .child("Column Count:", column_box)
         .child(
             "Vertical Split:",
             Checkbox::new()
@@ -196,7 +187,19 @@ pub fn style(siv: &mut Cursive) -> impl View {
                 })
                 .with_name("bars_col"),
         )
-        .child("Column Count:", column_box);
+        .child(
+            "No Scroll:",
+            Checkbox::new()
+                .with_checked(style_settings.no_scroll)
+                .on_change(|s, check| {
+                    on_hexview(
+                        s,
+                        move |v| v.dh.style.no_scroll = check,
+                        move |v| v.dh.style.no_scroll = check,
+                    );
+                })
+                .with_name("no_scroll"),
+        );
     let right_side = SelectView::new()
         .with_all([
             ("Hex", 0usize),

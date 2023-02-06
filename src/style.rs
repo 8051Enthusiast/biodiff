@@ -303,6 +303,7 @@ pub struct Style {
     pub spacer: bool,
     pub right_to_left: bool,
     pub column_count: ColumnSetting,
+    pub no_scroll: bool,
     #[serde(skip)]
     pub addr_width: u8,
 }
@@ -464,6 +465,7 @@ impl Default for Style {
             vertical: false,
             spacer: false,
             right_to_left: false,
+            no_scroll: false,
             column_count: ColumnSetting::Fit,
             addr_width: 0,
         }
