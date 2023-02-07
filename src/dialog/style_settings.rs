@@ -10,7 +10,7 @@ fn apply_style(siv: &mut Cursive) {
             Ok(c) => c,
             Err(e) => {
                 siv.add_layer(
-                    Dialog::text(format!("Could not parse column count: {}", e))
+                    Dialog::text(format!("Could not parse column count: {e}"))
                         .title("Error")
                         .button("Continue", close_top_maybe_quit),
                 );
@@ -90,7 +90,7 @@ pub fn style(siv: &mut Cursive) -> impl View {
     let column_string = match style_settings.column_count {
         ColumnSetting::Fit => String::new(),
         ColumnSetting::Fixed(x) => x.to_string(),
-        ColumnSetting::Multiple(x) => format!("{}x", x),
+        ColumnSetting::Multiple(x) => format!("{x}x"),
     };
     let column_box = EditView::new()
         .content(column_string)

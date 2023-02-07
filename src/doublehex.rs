@@ -345,7 +345,7 @@ impl DoubleHexContext {
             );
         }
         backend.append_text(
-            &addr_print,
+            addr_print,
             Color::HexSame,
             BackgroundColor::Blank,
             Effect::inverted(),
@@ -480,7 +480,7 @@ impl DoubleHexContext {
         const AUTOCOR_THRESHOLD: f32 = 0.2;
         let [first, second] = bytes.map(autocorrelation);
         let max_len = first.len().max(second.len());
-        let ratio = if second.len() > 0 {
+        let ratio = if !second.is_empty() {
             first.len() as f32 / second.len() as f32
         } else {
             1.0

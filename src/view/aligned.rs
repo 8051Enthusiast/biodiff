@@ -131,14 +131,14 @@ impl Aligned {
         for alignel in self
             .data
             .get_range(self.index..self.index + self.dh.cursor.get_size() as isize)
+            .into_iter()
+            .flatten()
         {
-            if let Some(alignel) = alignel {
-                if let Some(xbyte) = alignel.xbyte {
-                    ret[0].push(xbyte);
-                }
-                if let Some(ybyte) = alignel.ybyte {
-                    ret[1].push(ybyte);
-                }
+            if let Some(xbyte) = alignel.xbyte {
+                ret[0].push(xbyte);
+            }
+            if let Some(ybyte) = alignel.ybyte {
+                ret[1].push(ybyte);
             }
         }
         ret

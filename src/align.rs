@@ -154,9 +154,9 @@ impl AlignAlgorithm {
             return vec![Op::Match; x.len()];
         }
         if self.band == Banded::Normal {
-            RustBio.align(&self, mode, &x, &y)
+            RustBio.align(self, mode, x, y)
         } else {
-            align_banded(&self, mode, &x, &y)
+            align_banded(self, mode, x, y)
         }
     }
 
@@ -188,7 +188,7 @@ impl AlignAlgorithm {
         let alignment = self.align(pattern, text, InternalMode::Semiglobal);
         let (alignment, textaddr) = ops_pattern_subrange(&alignment);
         let (mut array, pattern_end, text_end) =
-            AlignElement::from_array(alignment, &full_pattern, text, select.start, textaddr);
+            AlignElement::from_array(alignment, full_pattern, text, select.start, textaddr);
         let (start_addr, end_addr) = if right {
             array.iter_mut().for_each(|x| *x = x.mirror());
             ((textaddr, select.start), (text_end, pattern_end))

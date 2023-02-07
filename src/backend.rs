@@ -70,13 +70,17 @@ impl TryFrom<Event> for Action {
                     return Err(())
                 }
             } {
-                (KeyCode::Char(' ') | KeyCode::Down | KeyCode::Char('j'), m) if m.contains(KeyModifiers::CONTROL) => {
+                (KeyCode::Char(' ') | KeyCode::Down | KeyCode::Char('j'), m)
+                    if m.contains(KeyModifiers::CONTROL) =>
+                {
                     Action::NextInsertion
                 }
                 (KeyCode::Char(' '), _) => Action::NextDifference,
                 (KeyCode::Down, m) if m.contains(KeyModifiers::SHIFT) => Action::NextDifference,
                 (KeyCode::Char('J'), _) => Action::NextDifference,
-                (KeyCode::Up | KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => Action::PrevInsertion,
+                (KeyCode::Up | KeyCode::Char('k'), m) if m.contains(KeyModifiers::CONTROL) => {
+                    Action::PrevInsertion
+                }
                 (KeyCode::Up, m) if m.contains(KeyModifiers::SHIFT) => Action::PrevDifference,
                 (KeyCode::Char('K'), _) => Action::PrevDifference,
                 (KeyCode::Up, _) => Action::Up,

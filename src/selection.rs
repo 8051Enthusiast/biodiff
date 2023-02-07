@@ -72,7 +72,7 @@ impl Selections {
                 let begin = start.min(current);
                 let end = start.max(current);
                 if begin == end && offset == begin {
-                    return SelectionStatus::Only;
+                    SelectionStatus::Only
                 } else if offset == begin {
                     SelectionStatus::Start
                 } else if offset == end {

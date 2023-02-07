@@ -21,7 +21,7 @@ pub struct ByteData {
 impl ByteData {
     pub fn new(byte: Option<u8>, is_search_result: bool, is_selected: SelectionStatus) -> Self {
         ByteData {
-            byte: byte,
+            byte,
             is_search_result,
             is_selected,
         }
