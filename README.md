@@ -1,7 +1,8 @@
 biodiff
 =======
 
-![Crates.io](https://img.shields.io/crates/v/biodiff)
+[![Crates.io](https://img.shields.io/crates/v/biodiff)](https://crates.io/crates/biodiff)
+[![Packaging status](https://repology.org/badge/tiny-repos/biodiff.svg)](https://repology.org/project/biodiff/versions)
 
 Compare binary files using alignment algorithms.
 
