@@ -199,7 +199,11 @@ impl HexView {
             view = match q {
                 // delegate to top-level control loop
                 DelegateEvent::Quit | DelegateEvent::OpenDialog(_) => {
-                    quit = Some(q);
+                    quit = match &mut view {
+                        HexView::Aligned(v, _, _) => !v.process_escape(cross),
+                        HexView::Unaligned(v) => !v.process_escape(cross),
+                    }
+                    .then_some(q);
                     view
                 }
                 DelegateEvent::SwitchToAlign => {
@@ -232,7 +236,7 @@ impl HexView {
             HexView::Aligned(a, send, mut recv) => {
                 siv.add_fullscreen_layer(a.with_name("aligned").full_screen());
                 let mut sink = siv.cb_sink().clone();
-                // we create a new thread that converts the `AlignedMessage`s comming from
+                // we create a new thread that converts the `AlignedMessage`s coming from
                 // the alignment threads to callbacks on the cursive instance, so this case
                 // is a bit more complicated than the unaligned one.
                 scope(|s| {

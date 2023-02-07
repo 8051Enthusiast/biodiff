@@ -318,9 +318,15 @@ impl Unaligned {
         self.redraw(printer, false);
     }
     /// clears the selection with the currently active cursors
-    pub fn clear_selection<B: Backend>(&mut self, printer: &mut B) {
-        self.selection.clear(self.dh.cursor_act);
+    pub fn clear_selection<B: Backend>(&mut self, printer: &mut B) -> bool {
+        let ret = self.selection.clear(self.dh.cursor_act);
         self.redraw(printer, false);
+        ret
+    }
+    /// Executes an action corresponding to an escape and returns true
+    /// if anything was done
+    pub fn process_escape<B: Backend>(&mut self, printer: &mut B) -> bool {
+        self.clear_selection(printer)
     }
     /// Process a single action/event
     pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: Action) {
@@ -333,7 +339,9 @@ impl Unaligned {
             Action::RemoveColumn => self.remove_column(printer),
             Action::AutoColumn => self.auto_column(printer),
             Action::StartSelection => self.start_selection(printer),
-            Action::ClearSelection => self.clear_selection(printer),
+            Action::ClearSelection => {
+                self.clear_selection(printer);
+            }
             Action::ResetColumn => {
                 self.dh.style.column_count = ColumnSetting::Fit;
                 self.refresh(printer);

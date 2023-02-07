@@ -44,13 +44,17 @@ impl Selections {
         }
     }
 
-    pub fn clear(&mut self, cursor_act: CursorActive) {
+    pub fn clear(&mut self, cursor_act: CursorActive) -> bool {
+        let mut ret = false;
         if cursor_act.is_first() {
+            ret |= self.start[0].is_some();
             self.start[0] = None;
         }
         if cursor_act.is_second() {
+            ret |= self.start[1].is_some();
             self.start[1] = None;
         }
+        ret
     }
 
     pub fn update(&mut self, offset: [isize; 2], cursor_act: CursorActive) {
