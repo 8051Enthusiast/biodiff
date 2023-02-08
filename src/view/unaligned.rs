@@ -360,33 +360,47 @@ impl Unaligned {
     pub fn goto<B: Backend>(
         &mut self,
         printer: &mut B,
-        right: bool,
-        pos: usize,
+        first: usize,
+        second: Option<usize>,
     ) -> Result<(), String> {
-        if !right && !self.dh.cursor_act.is_first() {
-            return Err(
-                "Attempting to search on first view, but current cursor is on second view".into(),
-            );
-        } else if right && !self.dh.cursor_act.is_second() {
-            return Err(
-                "Attempting to search on second view, but current cursor is on first view".into(),
-            );
-        }
-        let bounds = if !right {
-            0..self.data.get_data()[0].len()
-        } else {
-            0..self.data.get_data()[1].len()
+        let error_on_bound = |bound: usize, addr: usize| {
+            if bound > addr {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Target address {:#x} is not in bounds (< {:#x})",
+                    addr, bound
+                ))
+            }
         };
-        if !bounds.contains(&pos) {
-            return Err(format!(
-                "Target address {:#x} is not in bounds (< {:#x})",
-                pos, bounds.end
-            ));
-        }
-        self.goto_index(
-            printer,
-            pos as isize - if right { -self.data.shift } else { 0 },
-        );
+        let [first_len, second_len] = self.data.get_data().map(|x| x.len());
+        let (target_idx, shift) = match (self.dh.cursor_act, second) {
+            (CursorActive::None, _) => return Ok(()),
+            (CursorActive::First, None) => {
+                error_on_bound(first_len, first)?;
+                self.goto_index(printer, first as isize);
+                return Ok(());
+            }
+            (CursorActive::Second, None) => {
+                error_on_bound(second_len, first)?;
+                self.goto_index(printer, first as isize + self.data.shift);
+                return Ok(());
+            }
+            (CursorActive::Both, None) => {
+                error_on_bound(first_len.max(second_len), first)?;
+                (first as isize, 0)
+            }
+            (_, Some(second)) => {
+                error_on_bound(first_len, first)?;
+                error_on_bound(second_len, second)?;
+                (first as isize, first as isize - second as isize)
+            }
+        };
+        let old_cursor_act = self.dh.cursor_act;
+        self.dh.cursor_act = CursorActive::Both;
+        self.data.shift = shift;
+        self.goto_index(printer, target_idx);
+        self.dh.cursor_act = old_cursor_act;
         Ok(())
     }
     /// get the file addresses of the current cursors

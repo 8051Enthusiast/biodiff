@@ -2,10 +2,12 @@ Goto
 ====
 
 Put the address you want to go in (hexadecimal) into the address field.
-Then you can either go to that address on the left/top side by clicking
-'Goto Primary' or the same for the other view.
+The selected cursor(s) will jump to that address. You can select the
+active cursor with a/s/d if the hexview is active.
 
-Note that for the unaligned view, in case you have the cursor activated
-for a single view, the goto will only move that side (and you have to
-click the corresponding goto button for that side too, otherwise you
-will get an error).
+If the input is of the form "01234567|89abcdef" (with a bar in the midle),
+then the first view will jump to 01234567 and the second view will jump to
+89abcdef.
+
+If the aligned view is active, moving both cursors to given addresses will
+only work if both addresses are aligned to the same location.

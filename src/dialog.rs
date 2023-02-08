@@ -28,6 +28,7 @@ use cursive::{
 };
 use std::{
     fmt::Display,
+    num::ParseIntError,
     ops::Range,
     str::FromStr,
     sync::{

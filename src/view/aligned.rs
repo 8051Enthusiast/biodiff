@@ -265,12 +265,37 @@ impl Aligned {
     pub fn goto<B: Backend>(
         &mut self,
         printer: &mut B,
-        right: bool,
-        pos: usize,
+        first: usize,
+        second: Option<usize>,
     ) -> Result<(), String> {
-        let address_index = self
-            .index_address(right, pos)
-            .map_err(|_| "Address does not (yet) exist")?;
+        let address_index = match (self.dh.cursor_act, second) {
+            (CursorActive::First | CursorActive::Second, None) => {
+                self.index_address(self.dh.cursor_act.is_second(), first)
+            }
+            (_, Some(second)) => {
+                let first_idx = self.index_address(false, first);
+                let second_idx = self.index_address(true, second);
+                if first_idx != second_idx {
+                    return Err(String::from(
+                        "Attempting to jump to misaligned addresses in aligned mode",
+                    ));
+                }
+                first_idx
+            }
+            (CursorActive::Both, None) => {
+                let [first_idx, second_idx] = [false, true].map(|x| self.index_address(x, first));
+                if first_idx != second_idx {
+                    return Err(String::from(
+                        "Attempting to jump to same address with both \
+                        cursors that is not aligned to the same place",
+                    ));
+                }
+                first_idx
+            }
+            (CursorActive::None, _) => return Ok(()),
+        };
+        let address_index =
+            address_index.map_err(|_| format!("Address 0x{first:08x} is not aligned (yet)"))?;
         self.goto_index(printer, address_index);
         Ok(())
     }
