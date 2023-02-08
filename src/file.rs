@@ -55,6 +55,9 @@ impl FileState {
     /// gets the number of digits used to represent the file addresses
     /// (rounded up to be in pairs
     pub fn address_digits(&self) -> u8 {
+        if self.content.is_empty() {
+            return 2;
+        }
         (ilog2((self.content.len() - 1).max(1)) / 8 + 1) * 2
     }
 }
