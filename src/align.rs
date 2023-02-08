@@ -10,7 +10,7 @@ use std::{
 
 use crate::{file::FileContent, view::AlignedMessage};
 use bio::alignment::AlignmentOperation as Op;
-use realfft::{num_complex::Complex32, RealFftPlanner, RealToComplex};
+use realfft::{num_complex::Complex64, RealFftPlanner, RealToComplex};
 use serde::{Deserialize, Serialize};
 
 use self::rustbio::{align_banded, RustBio};
@@ -462,7 +462,7 @@ impl FlatAlignmentContext {
         let mut sum = fft_forward.make_output_vec();
         // this is easily parallelizable for up to 256 threads, for which we span a thread pool
         let thread_num = num_cpus::get().clamp(1, 256);
-        let (send, recv) = std::sync::mpsc::sync_channel::<Vec<Complex32>>(4.max(thread_num));
+        let (send, recv) = std::sync::mpsc::sync_channel::<Vec<Complex64>>(4.max(thread_num));
         for _ in 0..thread_num {
             let vecs = [self.vecs[0].clone(), self.vecs[1].clone()];
             let inbyte = current_byte.clone();
@@ -518,8 +518,8 @@ impl FlatAlignmentContext {
 fn correlation_thread(
     vecs: [FileContent; 2],
     inbyte: Arc<AtomicU16>,
-    outvecs: SyncSender<Vec<Complex32>>,
-    fft: Arc<dyn RealToComplex<f32>>,
+    outvecs: SyncSender<Vec<Complex64>>,
+    fft: Arc<dyn RealToComplex<f64>>,
 ) {
     let len = fft.len();
     loop {

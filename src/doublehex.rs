@@ -477,15 +477,15 @@ impl DoubleHexContext {
     pub fn auto_columns(&mut self, bytes: [&[u8]; 2]) {
         const MIN_AUTOCOR_WIDTH: usize = 6;
         const MAX_AUTOCOR_WIDTH: usize = 65535;
-        const AUTOCOR_THRESHOLD: f32 = 0.2;
+        const AUTOCOR_THRESHOLD: f64 = 0.2;
         let [first, second] = bytes.map(autocorrelation);
         let max_len = first.len().max(second.len());
         let ratio = if !second.is_empty() {
-            first.len() as f32 / second.len() as f32
+            first.len() as f64 / second.len() as f64
         } else {
             1.0
         };
-        let sum: Vec<f32> = first
+        let sum: Vec<f64> = first
             .iter()
             .chain(repeat(&0.0))
             .zip(second.iter().chain(repeat(&0.0)))
@@ -493,7 +493,7 @@ impl DoubleHexContext {
             .take(max_len.min(MAX_AUTOCOR_WIDTH))
             .skip(MIN_AUTOCOR_WIDTH)
             .collect();
-        let cmp = |x: &f32, y: &f32| {
+        let cmp = |x: &f64, y: &f64| {
             (!x.is_nan())
                 .then_some(*x)
                 .partial_cmp(&(!y.is_nan()).then_some(*y))
