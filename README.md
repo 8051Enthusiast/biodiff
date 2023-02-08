@@ -17,16 +17,28 @@ and bytes missing from one side are padded.
 It uses bio-informatics algorithms from the [`rust-bio`](https://rust-bio.github.io/) library (typically used for DNA sequence alignment) for that.
 The dialog boxes for configuration are done using [`cursive`](https://github.com/gyscos/cursive).
 
+Features
+--------
+* Unaligned view for moving both sides independently as contiguous byte segments
+* Aligned view for comparing corresponding bytes of both files
+* Many configurable byte representations (bases 2, 8, 10, 16; mixed ascii/hex, braille, roman numerals)
+* Right-to-left mode, horizontal and vertical split, ascii and bar column
+* Configurable bytes per row, adjustable by pressing `[`, `]`, `0`
+* Automatic determination of width by finding repetitions in visible/selected bytes by pressing '='
+* Search using text, regex and hexagex
+
 Usage
 -----
 Execute `biodiff file_a file_b` in a terminal and you should be dropped into a hex view showing two files side by side.
 Initially, the files will not be aligned and displayed without gaps on each side.
 By moving the cursor and views to a place where the left side and right side are similar and pressing `F3` (or `3`), they can be aligned.
-This is done block by block in standard configuration, which means that bytes near the cursor are aligned first and the other displayed later.
+This is done block by block in standard configuration, which means that bytes near the cursor are aligned first and further aligned blocks are displayed later on both sides.
 
 It is also possible to do global and local alignment (of the whole files at once) by changing the settings using `F4` (be sure to consult the help on the parameters).
 Generally, since it takes quadratic time and space, the global/local alignment will not work well for files bigger than 64kB.
 There is also a "banded" algorithm which is faster, but slightly less accurate.
+
+You can also select a region on one file and by pressing F3 the aligning algorithm will do a glocal alignment using the selected bytes as a pattern to find the corresponding bytes on the other file.
 
 Installation
 ------------
