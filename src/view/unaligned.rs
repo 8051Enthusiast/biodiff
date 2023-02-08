@@ -368,8 +368,7 @@ impl Unaligned {
                 Ok(())
             } else {
                 Err(format!(
-                    "Target address {:#x} is not in bounds (< {:#x})",
-                    addr, bound
+                    "Target address {addr:#x} is not in bounds (< {bound:#x})",
                 ))
             }
         };
