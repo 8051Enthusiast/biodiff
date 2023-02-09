@@ -1,3 +1,15 @@
+1.1.0 (2023-02-09)
+==================
+* Make bytes per row adjustable
+* Add automatic determination of bytes per row based on data in view
+* Redesign Goto menu
+* Make address only use as many digits as necessary
+* Add alignment of selected regions
+* Allow disabling terminal-escape based scroll
+* Fix some flickering when using terminal-escape based scroll
+* Add ability to jump up and down to differences and insertions
+* Add address difference to status bar
+
 1.0.4 (2023-01-31)
 ==================
 * Add -v/--version flag
