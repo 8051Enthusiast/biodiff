@@ -6,6 +6,7 @@ use std::{
         mpsc::{Sender, SyncSender},
         Arc,
     },
+    thread::available_parallelism,
 };
 
 use crate::{file::FileContent, view::AlignedMessage};
@@ -461,7 +462,7 @@ impl FlatAlignmentContext {
         let fft_inverse = fft_planner.plan_fft_inverse(total_len);
         let mut sum = fft_forward.make_output_vec();
         // this is easily parallelizable for up to 256 threads, for which we span a thread pool
-        let thread_num = num_cpus::get().clamp(1, 256);
+        let thread_num = available_parallelism().map(usize::from).unwrap_or(1);
         let (send, recv) = std::sync::mpsc::sync_channel::<Vec<Complex64>>(4.max(thread_num));
         for _ in 0..thread_num {
             let vecs = [self.vecs[0].clone(), self.vecs[1].clone()];
