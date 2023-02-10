@@ -1,3 +1,4 @@
+mod block_aligner;
 mod rustbio;
 use std::{
     ops::Range,
@@ -14,7 +15,10 @@ use bio::alignment::AlignmentOperation as Op;
 use realfft::{num_complex::Complex64, RealFftPlanner, RealToComplex};
 use serde::{Deserialize, Serialize};
 
-use self::rustbio::{align_banded, RustBio};
+use self::{
+    block_aligner::BlockAligner,
+    rustbio::{align_banded, RustBio},
+};
 
 pub const DEFAULT_BLOCKSIZE: usize = 8192;
 pub const DEFAULT_KMER: usize = 8;
@@ -154,7 +158,9 @@ impl AlignAlgorithm {
         if x[..] == y[..] {
             return vec![Op::Match; x.len()];
         }
-        if self.band == Banded::Normal {
+        if self.band == Banded::Normal && matches!(mode, InternalMode::Global) {
+            BlockAligner.align(self, mode, x, y)
+        } else if self.band == Banded::Normal {
             RustBio.align(self, mode, x, y)
         } else {
             align_banded(self, mode, x, y)

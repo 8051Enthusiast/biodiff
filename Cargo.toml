@@ -28,6 +28,7 @@ dirs = "4.0.0"
 regex = "1.7.1"
 hexagex = { path = "hexagex", version = "0.2.2" }
 realfft = "3.2.0"
+block-aligner = { version = "^0.3.0", features = ["simd_avx2"] }
 
 [dependencies.cursive]
 version = "0.20.0"
