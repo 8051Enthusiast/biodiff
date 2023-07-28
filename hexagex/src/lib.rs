@@ -275,7 +275,8 @@ impl TryFrom<&ast::Literal> for PartialElement {
                 return Ok(PartialElement::zerolen(Some(value.span)))
             }
             ast::LiteralKind::Verbatim
-            | ast::LiteralKind::Punctuation
+            | ast::LiteralKind::Meta
+            | ast::LiteralKind::Superfluous
             | ast::LiteralKind::Special(_) => {
                 if !value.c.is_ascii() {
                     return Err(InternalError::Unicode(value.span));
