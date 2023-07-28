@@ -206,7 +206,6 @@ fn color_from_mixed_bytes(a: ByteData, b: ByteData) -> Color {
     }
 }
 
-#[repr(usize)]
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Default)]
 pub enum DisplayMode {
     #[default]
