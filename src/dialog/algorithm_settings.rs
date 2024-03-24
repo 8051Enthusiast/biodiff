@@ -1,11 +1,20 @@
+use crate::{config::Settings, preset::PresetCursor};
+
+use self::algorithm_presets::refresh_presets;
+
 use super::*;
 /// Reads the algorithm settings from the algorithm dialog box and applies it
 /// onto the AlignAlgorithm stored in the user data.
-fn apply_algorithm(siv: &mut Cursive) {
+fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {
     let mut algorithm = AlignAlgorithm::default();
     let mut errors = String::new();
 
     // read common variables
+    parse_box(siv, "name", &mut algorithm.name, &mut errors);
+    if algorithm.name.is_empty() {
+        errors.push_str("name is invalid: must not be empty\n");
+    }
+
     parse_box(siv, "gap open", &mut algorithm.gap_open, &mut errors);
     if algorithm.gap_open > 0 {
         errors.push_str("gap open is invalid: must not be positive\n");
@@ -58,19 +67,37 @@ fn apply_algorithm(siv: &mut Cursive) {
                 .title("Error reading algorithm configuration")
                 .button("Continue", close_top_maybe_quit),
         );
-    } else {
-        // AlignAlgorithm is stored in the user data
-        siv.user_data::<Settings>().unwrap().algo = algorithm;
-        close_top_maybe_quit(siv)
+        return;
     }
+    let name = algorithm.name.clone();
+    // AlignAlgorithm is stored in the user data
+    let is_set = siv
+        .user_data::<Settings>()
+        .unwrap()
+        .presets
+        .set(cursor, algorithm);
+    if !is_set {
+        siv.add_layer(
+            Dialog::text(format!(
+                "Algorithm Settings with name \"{}\" already exists",
+                name
+            ))
+            .title("Error setting algorithm configuration")
+            .button("Continue", close_top_maybe_quit),
+        );
+        return;
+    }
+    refresh_presets(siv);
+    close_top_maybe_quit(siv)
 }
 
 /// Creates a dialog box for algorithm settings.
-pub fn algorithm(siv: &mut Cursive) -> impl View {
-    let algorithm: &mut AlignAlgorithm = &mut siv
+pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
+    let algorithm: &AlignAlgorithm = &siv
         .user_data::<Settings>()
         .expect("Could not get align algorithm info from cursive")
-        .algo;
+        .presets
+        .get(cursor);
 
     // various validator functions for the textboxes
     let is_i32 = |s: &str| s.parse::<i32>().is_ok();
@@ -84,6 +111,12 @@ pub fn algorithm(siv: &mut Cursive) -> impl View {
     // * match score
     // * whether the banded algorithm is used
     let right_always_list = ListView::new()
+        .child(
+            "Name:",
+            validated_box("name", algorithm.name.clone(), TEXT_WIDTH, |s| {
+                !s.is_empty()
+            }),
+        )
         .child(
             "Gap Open:",
             validated_box(
@@ -218,7 +251,7 @@ pub fn algorithm(siv: &mut Cursive) -> impl View {
                 )
                 .child(blocksize_enable),
         ))
-        .child(Button::new("OK", apply_algorithm))
+        .child(Button::new("OK", move |siv| apply_algorithm(siv, cursor)))
         .child(Button::new("Cancel", close_top_maybe_quit))
         .child(Button::new("Help", help_window(ALGORITHM_HELP)));
     // catch F1 for help

@@ -8,10 +8,7 @@ use crossterm::{
 };
 use crossterm::{execute, queue};
 use cursive::{reexports::enumset::EnumSet, theme, Printer};
-use std::{
-    convert::{TryFrom, TryInto},
-    io::{Cursor, Write},
-};
+use std::io::{Cursor, Write};
 use std::{io::Stdout, sync::mpsc::Sender};
 use unicode_width::UnicodeWidthStr;
 

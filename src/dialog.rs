@@ -1,16 +1,18 @@
+mod algorithm_presets;
 mod algorithm_settings;
 mod goto;
 mod search;
 mod set_offset;
 mod settings;
 mod style_settings;
+
 use crate::{
     align::{
         AlignAlgorithm, AlignMode, Banded, FlatAlignProgressMessage, FlatAlignmentContext,
         DEFAULT_BLOCKSIZE, DEFAULT_KMER, DEFAULT_WINDOW,
     },
     backend::Dummy,
-    control::Settings,
+    config::Config,
     file::FileContent,
     search::{Query, QueryType, SearchContext},
     style::{ColumnSetting, DisplayMode, Style},
@@ -39,6 +41,7 @@ use std::{
 };
 const TEXT_WIDTH: usize = 6;
 
+pub use algorithm_presets::presets;
 pub use algorithm_settings::algorithm;
 pub use goto::goto;
 pub use search::search;

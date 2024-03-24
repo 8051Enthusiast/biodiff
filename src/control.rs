@@ -10,24 +10,19 @@ use cursive::{
 };
 use cursive::{traits::Resizable, views::ResizedView, Cursive};
 use cursive_buffered_backend::BufferedBackend;
-use dirs::config_dir;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     align::{AlignAlgorithm, AlignMode},
     backend::{send_cross_actions, Action, Cross, Dummy},
+    config::{Config, Settings},
     cursor::CursorState,
     dialog,
     doublehex::DoubleHexContext,
     file::FileState,
-    style::Style,
     view::{self, Aligned, AlignedMessage},
 };
 use std::{
-    error::Error,
-    fs::read_to_string,
     ops::Range,
-    path::PathBuf,
     sync::mpsc::{channel, Receiver, Sender},
 };
 
@@ -37,7 +32,9 @@ type CursiveCallback = Box<dyn Fn(&mut Cursive) + 'static + Send>;
 /// when opening dialog boxes. This is done because initially, the cursive backend was too flickery.
 /// However, this was fixed by using cursive_buffered_backend, so now this is only a minor optimization.
 pub fn run(x: FileState, y: FileState) {
-    let mut settings = Settings::from_config().unwrap_or_default();
+    let mut settings = Config::from_config()
+        .map(Config::into_current_version)
+        .unwrap_or_default();
     let digits = x.address_digits().max(y.address_digits());
     settings.style.addr_width = digits;
     let mut hv = HexView::new(x, y);
@@ -63,52 +60,6 @@ pub fn run(x: FileState, y: FileState) {
         };
         hv = hv_new;
         settings = settings_new;
-    }
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct Settings {
-    pub algo: AlignAlgorithm,
-    pub style: Style,
-}
-
-impl Settings {
-    fn config_path() -> Result<PathBuf, std::io::Error> {
-        match std::env::var_os("BIODIFF_CONFIG_DIR") {
-            Some(p) => Ok(PathBuf::from(p)),
-            None => match config_dir() {
-                Some(mut p) => {
-                    p.push("biodiff");
-                    Ok(p)
-                }
-                None => Err(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Could not find configuration directory",
-                )),
-            },
-        }
-    }
-    fn settings_file() -> Result<PathBuf, std::io::Error> {
-        let mut path = Self::config_path()?;
-        path.push("config.json");
-        Ok(path)
-    }
-    pub fn from_config() -> Option<Self> {
-        let config = read_to_string(Self::settings_file().ok()?).ok()?;
-        serde_json::from_str(&config).ok()
-    }
-
-    pub fn save_config(&self) -> Result<(), Box<dyn Error + 'static>> {
-        let config = serde_json::to_string(self)?;
-        let r = std::fs::create_dir_all(Self::config_path()?);
-        if let Err(ref e) = r {
-            match e.kind() {
-                std::io::ErrorKind::AlreadyExists => (),
-                _ => r?,
-            }
-        }
-        std::fs::write(Self::settings_file()?, config)?;
-        Ok(())
     }
 }
 
@@ -209,7 +160,12 @@ impl HexView {
                 DelegateEvent::SwitchToAlign => {
                     quit = None;
                     let select = view.selection();
-                    view.into_aligned(&settings.algo, select)
+                    let algo = if select[0].is_some() ^ select[1].is_some() {
+                        settings.presets.current_semiglobal()
+                    } else {
+                        settings.presets.current_global()
+                    };
+                    view.into_aligned(algo, select)
                 }
                 DelegateEvent::SwitchToUnalign => {
                     quit = None;

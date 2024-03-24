@@ -1,9 +1,11 @@
+use crate::config::Settings;
+
 use super::*;
 fn save_settings(siv: &mut Cursive) {
     let settings = siv
         .user_data::<Settings>()
         .expect("Could not get settings from cursive");
-    if let Err(e) = settings.save_config() {
+    if let Err(e) = Config::from(settings.clone()).save_config() {
         siv.add_layer(
             Dialog::text(format!("Could not save config: {e}"))
                 .button("Close", close_top_maybe_quit)
@@ -32,7 +34,7 @@ pub fn settings(siv: &mut Cursive) {
                         .with_all([("Algorithm", 0), ("Display Style", 1)])
                         .on_submit(|s, t| match t {
                             0 => {
-                                let v = algorithm(s);
+                                let v = presets(s);
                                 s.add_layer(v)
                             }
                             1 => {

@@ -1,3 +1,5 @@
+use crate::config::Settings;
+
 use super::*;
 fn apply_style(siv: &mut Cursive) {
     let column_count = siv

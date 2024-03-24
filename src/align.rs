@@ -61,9 +61,10 @@ pub enum Banded {
 }
 
 /// Contains parameters to run the alignment algorithm with
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AlignAlgorithm {
+    pub name: String,
     pub gap_open: i32,
     pub gap_extend: i32,
     pub mismatch_score: i32,
@@ -75,6 +76,7 @@ pub struct AlignAlgorithm {
 impl Default for AlignAlgorithm {
     fn default() -> Self {
         AlignAlgorithm {
+            name: "Default".to_string(),
             gap_open: -5,
             gap_extend: -1,
             mismatch_score: -1,
@@ -95,14 +97,15 @@ impl AlignAlgorithm {
         addr: (usize, usize),
         sender: Sender<AlignedMessage>,
     ) {
-        let algo = *self;
+        let algo1 = self.clone();
+        let algo2 = self.clone();
         match self.mode {
             AlignMode::Local => {
                 // we only need one thread
-                std::thread::spawn(move || algo.align_whole(x, y, InternalMode::Local, sender));
+                std::thread::spawn(move || algo1.align_whole(x, y, InternalMode::Local, sender));
             }
             AlignMode::Global => {
-                std::thread::spawn(move || algo.align_whole(x, y, InternalMode::Global, sender));
+                std::thread::spawn(move || algo2.align_whole(x, y, InternalMode::Global, sender));
             }
             AlignMode::Blockwise(blocksize) => {
                 // for Blockwise, we need one thread for each direction from the cursor
@@ -110,9 +113,9 @@ impl AlignAlgorithm {
                 let x_cp = x.clone();
                 let y_cp = y.clone();
                 let sender_cp = sender.clone();
-                std::thread::spawn(move || algo.align_end(x, y, addr, blocksize, sender));
+                std::thread::spawn(move || algo1.align_end(x, y, addr, blocksize, sender));
                 std::thread::spawn(move || {
-                    algo.align_front(x_cp, y_cp, addr, blocksize, sender_cp)
+                    algo2.align_front(x_cp, y_cp, addr, blocksize, sender_cp)
                 });
             }
         }
@@ -144,7 +147,7 @@ impl AlignAlgorithm {
                 )
             }
         };
-        let algo = *self;
+        let algo = self.clone();
         std::thread::spawn(move || {
             algo.align_with_selection(files, (selected, right), end, sender)
         });
@@ -215,7 +218,7 @@ impl AlignAlgorithm {
         };
         let files2 = files.clone();
         let sender2 = sender.clone();
-        let algo = *self;
+        let algo = self.clone();
         std::thread::spawn(move || {
             algo.align_end(
                 files2[0].clone(),

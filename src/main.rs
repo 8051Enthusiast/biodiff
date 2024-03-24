@@ -1,11 +1,13 @@
 mod align;
 mod backend;
+mod config;
 mod control;
 mod cursor;
 mod datastruct;
 mod dialog;
 mod doublehex;
 mod file;
+mod preset;
 mod search;
 mod selection;
 mod style;
