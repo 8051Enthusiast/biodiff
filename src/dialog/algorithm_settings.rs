@@ -217,42 +217,55 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
     ))
     .with_enabled(matches!(algorithm.mode, AlignMode::Blockwise(_)))
     .with_name("blocksize enable");
-    let left_side = LinearLayout::vertical()
-        .child(Panel::new(
-            LinearLayout::vertical()
-                .child(
-                    mode_select
-                        .button_str("Local")
-                        .with(|b| {
-                            if matches!(algorithm.mode, AlignMode::Local) {
-                                b.select();
-                            }
-                        })
-                        .with_name("local radio"),
-                )
-                .child(
-                    mode_select
-                        .button_str("Global")
-                        .with(|b| {
-                            if matches!(algorithm.mode, AlignMode::Global) {
-                                b.select();
-                            }
-                        })
-                        .with_name("global radio"),
-                )
-                .child(
-                    mode_select
-                        .button_str("Blockwise")
-                        .with(|b| {
-                            if matches!(algorithm.mode, AlignMode::Blockwise(_)) {
-                                b.select();
-                            }
-                        })
-                        .with_name("blockwise radio"),
-                )
-                .child(blocksize_enable),
-        ))
-        .child(Button::new("OK", move |siv| apply_algorithm(siv, cursor)))
+    let mut left_side = LinearLayout::vertical().child(Panel::new(
+        LinearLayout::vertical()
+            .child(
+                mode_select
+                    .button_str("Local")
+                    .with(|b| {
+                        if matches!(algorithm.mode, AlignMode::Local) {
+                            b.select();
+                        }
+                    })
+                    .with_name("local radio"),
+            )
+            .child(
+                mode_select
+                    .button_str("Global")
+                    .with(|b| {
+                        if matches!(algorithm.mode, AlignMode::Global) {
+                            b.select();
+                        }
+                    })
+                    .with_name("global radio"),
+            )
+            .child(
+                mode_select
+                    .button_str("Blockwise")
+                    .with(|b| {
+                        if matches!(algorithm.mode, AlignMode::Blockwise(_)) {
+                            b.select();
+                        }
+                    })
+                    .with_name("blockwise radio"),
+            )
+            .child(blocksize_enable),
+    ));
+    if cursor.preset.is_some() {
+        left_side.add_child(Button::new("Apply", move |siv| {
+            apply_algorithm(siv, cursor)
+        }))
+    }
+    left_side = left_side
+        .child(Button::new("New Preset", move |siv| {
+            apply_algorithm(
+                siv,
+                PresetCursor {
+                    preset: None,
+                    kind: cursor.kind,
+                },
+            )
+        }))
         .child(Button::new("Cancel", close_top_maybe_quit))
         .child(Button::new("Help", help_window(ALGORITHM_HELP)));
     // catch F1 for help
