@@ -1,0 +1,21 @@
+Algorithm Presets
+=================
+
+In the algorithm presets window, you can create and edit
+algorithm presets. Algorithm presets are a way to save the
+settings of an algorithm so that you can easily switch
+between them.
+
+There are two columns labeled "Global Presets" and "Semiglobal
+Presets". Global presets are used in the regular scenario
+were you are just aligning the two files as a whole.
+Semiglobal presets are used in the needle-in-the-haystack
+scenario where one side of the view has a selection and
+you want to find the best matching region in the other
+side and start aligning from there.
+
+You can create a new preset of either type by pressing the
+"New Preset" button, and edit the currently selected preset
+by pressing the "Edit Current" button. You are also able to
+clone the currently selected preset by pressing "Edit Current",
+renaming it and then pressing "New Preset".

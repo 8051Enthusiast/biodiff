@@ -23,8 +23,8 @@ Keys:
  * 'N': Jump to previous search result
  * Home: Jump to first address
  * End: Jump to last address
-* 'v': Start selection at cursor(s)
-* 'c': Clear selection at cursor(s)
+ * 'v': Start selection at cursor(s)
+ * 'c': Clear selection at cursor(s)
  * '[' and ']': Remove or add a hex column
  * '0': Set columns to fit screen
  * '=': Attempt to align column number to the repetitions of bytes
@@ -33,6 +33,7 @@ Keys:
 
 Unaligned View
 --------------
+
 This is the binary diff view that just shows both files contiguously
 and is the mode that the viewer starts in. You can align at the
 cursor by pressing F3 (or 3) and go into the Aligned View.
@@ -53,6 +54,7 @@ be extended in both directions.
 
 Aligned View
 ------------
+
 This view attempts to show the bytes of the file such that same bytes
 of one file are aligned to the same bytes of another file.
 
@@ -71,6 +73,7 @@ with different settings can be applied by again pressing F3.
 
 Alignment Algorithm Settings
 ----------------------------
+
 It is possible to change various parameters, and for smaller files
 align them as a whole without first having to search for an alignment.
 Do note that this will result in significant RAM usage for larger files

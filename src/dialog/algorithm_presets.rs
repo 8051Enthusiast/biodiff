@@ -84,9 +84,11 @@ pub fn presets(siv: &mut Cursive) -> NamedView<impl View> {
     OnEventView::new(
         Dialog::around(LinearLayout::horizontal().child(global).child(semiglobal))
             .title("Alignment Presets")
-            .button("Close", close.clone()),
+            .button("Close", close.clone())
+            .button("Help", help_window(PRESET_HELP)),
     )
     .on_event(Key::Esc, close)
+    .on_event(Key::F1, help_window(PRESET_HELP))
     .with_name("presets")
 }
 

@@ -124,6 +124,7 @@ pub fn help_window(help_text: &'static str) -> impl Fn(&mut Cursive) {
 
 pub const MAIN_HELP: &str = include_str!("help/main.txt");
 pub const ALGORITHM_HELP: &str = include_str!("help/algorithm.txt");
+pub const PRESET_HELP: &str = include_str!("help/preset.txt");
 pub const STYLE_HELP: &str = include_str!("help/style.txt");
 pub const GOTO_HELP: &str = include_str!("help/goto.txt");
 pub const SEARCH_HELP: &str = include_str!("help/search.txt");
