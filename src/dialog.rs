@@ -39,7 +39,6 @@ use std::{
     },
     time::Duration,
 };
-const TEXT_WIDTH: usize = 6;
 
 pub use algorithm_presets::presets;
 pub use algorithm_settings::algorithm;

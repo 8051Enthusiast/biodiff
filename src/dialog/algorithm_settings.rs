@@ -3,6 +3,7 @@ use crate::{config::Settings, preset::PresetCursor};
 use self::algorithm_presets::refresh_presets;
 
 use super::*;
+const TEXT_WIDTH: usize = 10;
 /// Reads the algorithm settings from the algorithm dialog box and applies it
 /// onto the AlignAlgorithm stored in the user data.
 fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {

@@ -1,6 +1,7 @@
 use crate::config::Settings;
 
 use super::*;
+const TEXT_WIDTH: usize = 6;
 fn apply_style(siv: &mut Cursive) {
     let column_count = siv
         .find_name::<EditView>("column_count")
