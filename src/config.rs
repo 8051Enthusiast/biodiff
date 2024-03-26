@@ -9,6 +9,24 @@ use crate::{
     style::Style,
 };
 
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum AlignModeV0 {
+    Local,
+    Global,
+    Blockwise(usize),
+}
+
+impl From<AlignModeV0> for AlignMode {
+    fn from(s: AlignModeV0) -> Self {
+        match s {
+            AlignModeV0::Local => AlignMode::Global,
+            AlignModeV0::Global => AlignMode::Global,
+            AlignModeV0::Blockwise(blocksize) => AlignMode::Blockwise(blocksize),
+        }
+    }
+}
+
 /// Old alignment algorithm parameters from version 0 of the config file
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(default)]
@@ -17,7 +35,7 @@ pub struct AlignAlgorithmV0 {
     pub gap_extend: i32,
     pub mismatch_score: i32,
     pub match_score: i32,
-    pub mode: AlignMode,
+    pub mode: AlignModeV0,
     pub band: Banded,
 }
 
@@ -30,7 +48,7 @@ impl Default for AlignAlgorithmV0 {
             gap_extend: -1,
             mismatch_score: -1,
             match_score: 1,
-            mode: AlignMode::Blockwise(DEFAULT_BLOCKSIZE_V0),
+            mode: AlignModeV0::Blockwise(DEFAULT_BLOCKSIZE_V0),
             band: Banded::Normal,
         }
     }
@@ -44,7 +62,7 @@ impl From<AlignAlgorithmV0> for AlignAlgorithm {
             gap_extend: s.gap_extend,
             mismatch_score: s.mismatch_score,
             match_score: s.match_score,
-            mode: s.mode,
+            mode: s.mode.into(),
             band: s.band,
         }
     }

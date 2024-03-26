@@ -50,9 +50,7 @@ fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {
     };
 
     // read mode settings
-    if radio_is_selected("local radio") {
-        algorithm.mode = AlignMode::Local
-    } else if radio_is_selected("global radio") {
+    if radio_is_selected("global radio") {
         algorithm.mode = AlignMode::Global
     } else if radio_is_selected("blockwise radio") {
         let mut blocksize = DEFAULT_BLOCKSIZE;
@@ -203,8 +201,8 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
         });
     });
     let default_blocksize = match algorithm.mode {
-        AlignMode::Local | AlignMode::Global => DEFAULT_BLOCKSIZE,
         AlignMode::Blockwise(x) => x,
+        _ => DEFAULT_BLOCKSIZE,
     };
     let blocksize_enable = EnableableView::new(ListView::new().child(
         "Block size:",
@@ -219,16 +217,6 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
     .with_name("blocksize enable");
     let mut left_side = LinearLayout::vertical().child(Panel::new(
         LinearLayout::vertical()
-            .child(
-                mode_select
-                    .button_str("Local")
-                    .with(|b| {
-                        if matches!(algorithm.mode, AlignMode::Local) {
-                            b.select();
-                        }
-                    })
-                    .with_name("local radio"),
-            )
             .child(
                 mode_select
                     .button_str("Global")

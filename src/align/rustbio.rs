@@ -20,7 +20,6 @@ fn scorer(
     };
     let scorer = Scoring::new(algo.gap_open, algo.gap_extend, score);
     match mode {
-        InternalMode::Local => scorer.xclip(0).yclip(0),
         InternalMode::Global => scorer,
         InternalMode::Semiglobal => scorer.yclip(0),
     }

@@ -25,16 +25,15 @@ pub const DEFAULT_WINDOW: usize = 6;
 /// and aligns only using `blocksize` bytes from each sequence in one direction, which
 /// makes it works fast and local, but it doesn't see bigger gaps and everything after big gaps
 /// tends to be unaligned.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum AlignMode {
-    Local,
     Global,
+    Semiglobal,
     Blockwise(usize),
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum InternalMode {
-    Local,
     Global,
     Semiglobal,
 }
@@ -42,8 +41,8 @@ pub enum InternalMode {
 impl From<AlignMode> for InternalMode {
     fn from(value: AlignMode) -> Self {
         match value {
-            AlignMode::Local => InternalMode::Local,
             AlignMode::Global | AlignMode::Blockwise(_) => InternalMode::Global,
+            AlignMode::Semiglobal => InternalMode::Semiglobal,
         }
     }
 }
@@ -100,11 +99,8 @@ impl AlignAlgorithm {
         let algo1 = self.clone();
         let algo2 = self.clone();
         match self.mode {
-            AlignMode::Local => {
-                // we only need one thread
-                std::thread::spawn(move || algo1.align_whole(x, y, InternalMode::Local, sender));
-            }
             AlignMode::Global => {
+                // we only need one thread
                 std::thread::spawn(move || algo2.align_whole(x, y, InternalMode::Global, sender));
             }
             AlignMode::Blockwise(blocksize) => {
@@ -118,6 +114,7 @@ impl AlignAlgorithm {
                     algo2.align_front(x_cp, y_cp, addr, blocksize, sender_cp)
                 });
             }
+            AlignMode::Semiglobal => unreachable!("Semiglobal alignment is not supported here"),
         }
     }
     pub fn start_align_with_selection(

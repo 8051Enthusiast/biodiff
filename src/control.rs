@@ -101,7 +101,7 @@ impl HexView {
             // maybe one could think up some better values to align at here or something
             Err(hv) => hv,
             Ok((left, right, mut dh)) => {
-                if matches!(algo.mode, AlignMode::Local | AlignMode::Global) {
+                if algo.mode == AlignMode::Global {
                     dh.cursor = CursorState::new((dh.cursor.get_size_x(), dh.cursor.get_size_y()))
                 };
                 HexView::Aligned(
