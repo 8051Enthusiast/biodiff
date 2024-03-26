@@ -53,15 +53,17 @@ pub fn presets(siv: &mut Cursive) -> NamedView<impl View> {
             );
             siv.add_layer(dialog);
         }));
+        let mut inner_layout = LinearLayout::vertical();
         for (i, p) in presets.iter().enumerate() {
             let mut button = group.button(i as u32, p.name.clone());
             if i as u32 == current {
                 button.select();
             }
 
-            layout.add_child(button);
+            inner_layout.add_child(button);
         }
-        layout.min_width(22).scrollable()
+        layout.add_child(Panel::new(inner_layout.scrollable().scroll_x(true)));
+        layout.min_width(25)
     };
 
     let global = make_side(
