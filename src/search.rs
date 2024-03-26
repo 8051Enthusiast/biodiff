@@ -123,9 +123,7 @@ impl SearchResults {
         };
 
         self.starts
-            .range(..=addr)
-            .rev()
-            .next()
+            .range(..=addr).next_back()
             .map_or(false, |(x, y)| (*x..*y).contains(&addr))
     }
     /// get the next result after addr

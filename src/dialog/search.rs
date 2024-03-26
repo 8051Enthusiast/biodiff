@@ -185,13 +185,14 @@ fn add_search_results(
         move |v| v.add_search_results(q1, results, first),
         move |v| v.add_search_results(query, r1, first),
     );
-    match siv.call_on_name(SEARCH_STATS, |view: &mut SearchResultStats| {
+    let result = siv.call_on_name(SEARCH_STATS, |view: &mut SearchResultStats| {
         view.update_count(count);
         if is_final {
             view.usage_count -= 1;
         }
         view.usage_count == 0
-    }) {
+    });
+    match result {
         Some(true) => {
             on_hexview(
                 siv,

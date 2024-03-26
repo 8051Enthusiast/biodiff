@@ -382,7 +382,7 @@ impl TryFrom<&ast::ClassSetUnion> for PartialElement {
     type Error = InternalError;
 
     fn try_from(value: &ast::ClassSetUnion) -> Result<Self, Self::Error> {
-        let mut result: PartialElement = match value.items.get(0) {
+        let mut result: PartialElement = match value.items.first() {
             Some(x) => x.try_into()?,
             None => return Ok(PartialElement::zerolen(Some(value.span))),
         };
@@ -657,7 +657,7 @@ impl PartialElement {
                 }
             }
         } else {
-            ret = self.values.clone();
+            ret.clone_from(&self.values);
         }
         PartialElement {
             length: split_point,

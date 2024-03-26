@@ -67,7 +67,8 @@ impl DoubleHexLine {
             (style.bars_col, disp_column_blocks),
         ]
         .iter()
-        .filter_map(|(c, d)| c.then(|| d))
+        .filter(|&(c, _)| *c)
+        .map(|(_, d)| d)
         {
             self.print_unimportant(printer, MIDDLE_PAD);
             for (a, b) in &bytes {
