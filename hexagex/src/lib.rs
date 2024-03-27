@@ -66,50 +66,58 @@ fn binary_ast_to_maybe_ast(ast: &Ast) -> Result<Either<PartialSequence, Ast>, In
             Err(InternalError::IncompleteEscape(lit.span))
         }
         // literals, dots etc. are collected into partial sequences and not yet into an ast
-        Ast::Literal(lit) => Ok(Either::Left(PartialElement::try_from(lit)?.sequence())),
+        Ast::Literal(lit) => Ok(Either::Left(PartialElement::try_from(&**lit)?.sequence())),
         Ast::Dot(span) => Ok(Either::Left(
-            PartialElement::full(4, 4, Some(*span)).sequence(),
+            PartialElement::full(4, 4, Some(**span)).sequence(),
         )),
         // turn ^ and $ into \A and \z
         Ast::Assertion(a) => match a.kind {
-            ast::AssertionKind::StartLine => Ok(Either::Right(Ast::Assertion(ast::Assertion {
-                kind: ast::AssertionKind::StartText,
-                ..a.clone()
-            }))),
-            ast::AssertionKind::EndLine => Ok(Either::Right(Ast::Assertion(ast::Assertion {
-                kind: ast::AssertionKind::EndText,
-                ..a.clone()
-            }))),
+            ast::AssertionKind::StartLine => {
+                Ok(Either::Right(Ast::Assertion(Box::new(ast::Assertion {
+                    kind: ast::AssertionKind::StartText,
+                    ..(**a).clone()
+                }))))
+            }
+            ast::AssertionKind::EndLine => {
+                Ok(Either::Right(Ast::Assertion(Box::new(ast::Assertion {
+                    kind: ast::AssertionKind::EndText,
+                    ..(**a).clone()
+                }))))
+            }
             _ => Err(InternalError::InvalidCharacter(a.span)),
         },
         // classes are an amalgation of values all of the same bit width, so they are a PartialSequence
-        Ast::Class(c) => Ok(Either::Left(PartialElement::try_from(c)?.sequence())),
+        Ast::ClassBracketed(c) => Ok(Either::Left(PartialElement::try_from(&**c)?.sequence())),
+        Ast::ClassUnicode(c) => Err(InternalError::Unicode(c.span)),
+        Ast::ClassPerl(c) => Ok(Either::Left(PartialElement::from(&**c).sequence())),
         // these require their children to be a multiple of 8 bits, which is done implicitely
         // by the binary_ast_to_final_ast function
-        Ast::Repetition(l) => Ok(Either::Right(Ast::Repetition(ast::Repetition {
+        Ast::Repetition(l) => Ok(Either::Right(Ast::Repetition(Box::new(ast::Repetition {
             ast: Box::new(binary_ast_to_final_ast(&l.ast)?),
             span: l.span,
             op: l.op.clone(),
             greedy: l.greedy,
-        }))),
-        Ast::Group(g) => Ok(Either::Right(Ast::Group(ast::Group {
+        })))),
+        Ast::Group(g) => Ok(Either::Right(Ast::Group(Box::new(ast::Group {
             ast: Box::new(binary_ast_to_final_ast(&g.ast)?),
             span: g.span,
             kind: g.kind.clone(),
-        }))),
+        })))),
         Ast::Alternation(alt) => {
             let asts = alt
                 .asts
                 .iter()
                 .map(binary_ast_to_final_ast)
                 .collect::<Result<_, _>>()?;
-            Ok(Either::Right(Ast::Alternation(ast::Alternation {
-                span: alt.span,
-                asts,
-            })))
+            Ok(Either::Right(Ast::Alternation(Box::new(
+                ast::Alternation {
+                    span: alt.span,
+                    asts,
+                },
+            ))))
         }
-        Ast::Concat(concat) => PartialSequence::try_from(concat).map(Either::Left),
-        Ast::Empty(span) => Ok(Either::Right(Ast::Empty(*span))),
+        Ast::Concat(concat) => PartialSequence::try_from(&**concat).map(Either::Left),
+        Ast::Empty(span) => Ok(Either::Right(Ast::Empty(span.clone()))),
         Ast::Flags(flags) => Ok(Either::Right(Ast::Flags(flags.clone()))),
     }
 }
@@ -144,18 +152,6 @@ impl TryFrom<&ast::Concat> for PartialSequence {
                 span: value.span,
                 elements,
             })
-        }
-    }
-}
-
-impl TryFrom<&ast::Class> for PartialElement {
-    type Error = InternalError;
-
-    fn try_from(value: &ast::Class) -> Result<Self, Self::Error> {
-        match value {
-            ast::Class::Unicode(c) => Err(InternalError::Unicode(c.span)),
-            ast::Class::Perl(c) => Ok(c.into()),
-            ast::Class::Bracketed(c) => c.try_into(),
         }
     }
 }
@@ -405,7 +401,7 @@ impl TryFrom<PartialSequence> for Ast {
 
     fn try_from(value: PartialSequence) -> Result<Self, Self::Error> {
         if value.elements.is_empty() {
-            return Ok(Ast::Empty(value.span));
+            return Ok(Ast::Empty(Box::new(value.span)));
         }
         let mut ast = ast::Concat {
             span: value.span,
@@ -445,7 +441,7 @@ impl TryFrom<PartialSequence> for Ast {
         if current_byte_values.length > 0 {
             ast.asts.push(current_byte_values.try_into()?);
         }
-        Ok(Ast::Concat(ast))
+        Ok(Ast::Concat(Box::new(ast)))
     }
 }
 
@@ -492,7 +488,7 @@ impl TryFrom<PartialElement> for Ast {
             .span
             .expect("Called try_from for PartialElement to Ast without span");
         if value.length == 0 {
-            return Ok(Ast::Empty(span));
+            return Ok(Ast::Empty(Box::new(span)));
         } else if value.length != 8 {
             return Err(InternalError::AlignmentError(AlignmentError {
                 is: value.length % 8,
@@ -506,11 +502,11 @@ impl TryFrom<PartialElement> for Ast {
                 return Err(InternalError::EmptyClass(span));
             }
             [v] => {
-                return Ok(Ast::Literal(ast::Literal {
+                return Ok(Ast::Literal(Box::new(ast::Literal {
                     span,
                     kind: ast::LiteralKind::HexFixed(ast::HexLiteralKind::X),
                     c: *v as char,
-                }))
+                })))
             }
             _ => (),
         };
@@ -520,7 +516,7 @@ impl TryFrom<PartialElement> for Ast {
         };
         // bunch up into ranges when we get contingent values
         let mut current_range = match value.values.first() {
-            None => return Ok(Ast::Empty(span)),
+            None => return Ok(Ast::Empty(Box::new(span))),
             Some(a) => (*a, *a),
         };
         for &i in &value.values[1..] {
@@ -532,7 +528,7 @@ impl TryFrom<PartialElement> for Ast {
             }
         }
         add_byte_range_to_class(&mut byte_class, current_range);
-        Ok(Ast::Class(ast::Class::Bracketed(ast::ClassBracketed {
+        Ok(Ast::ClassBracketed(Box::new(ast::ClassBracketed {
             span,
             negated: false,
             kind: ast::ClassSet::Item(ast::ClassSetItem::Union(byte_class)),
