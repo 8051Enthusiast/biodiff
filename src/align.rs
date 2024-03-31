@@ -87,6 +87,12 @@ impl Default for AlignAlgorithm {
 }
 
 impl AlignAlgorithm {
+    pub fn default_semiglobal() -> Self {
+        AlignAlgorithm {
+            mode: AlignMode::Semiglobal,
+            ..Default::default()
+        }
+    }
     /// This function starts the threads for the alignment, which send the data over the sender.
     /// It should then immediately return.
     pub fn start_align(

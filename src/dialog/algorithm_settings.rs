@@ -1,4 +1,7 @@
-use crate::{config::Settings, preset::PresetCursor};
+use crate::{
+    config::Settings,
+    preset::{AlgorithmKind, PresetCursor},
+};
 
 use self::algorithm_presets::refresh_presets;
 
@@ -50,14 +53,18 @@ fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {
     };
 
     // read mode settings
-    if radio_is_selected("global radio") {
-        algorithm.mode = AlignMode::Global
-    } else if radio_is_selected("blockwise radio") {
-        let mut blocksize = DEFAULT_BLOCKSIZE;
-        parse_box(siv, "block size", &mut blocksize, &mut errors);
-        algorithm.mode = AlignMode::Blockwise(blocksize)
+    if cursor.kind == AlgorithmKind::Global {
+        if radio_is_selected("global radio") {
+            algorithm.mode = AlignMode::Global
+        } else if radio_is_selected("blockwise radio") {
+            let mut blocksize = DEFAULT_BLOCKSIZE;
+            parse_box(siv, "block size", &mut blocksize, &mut errors);
+            algorithm.mode = AlignMode::Blockwise(blocksize)
+        } else {
+            errors.push_str("Could not find any enabled mode radio button\n")
+        }
     } else {
-        errors.push_str("Could not find any enabled mode radio button\n")
+        algorithm.mode = AlignMode::Semiglobal;
     }
 
     if !errors.is_empty() {
@@ -215,30 +222,38 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
     ))
     .with_enabled(matches!(algorithm.mode, AlignMode::Blockwise(_)))
     .with_name("blocksize enable");
-    let mut left_side = LinearLayout::vertical().child(Panel::new(
-        LinearLayout::vertical()
-            .child(
-                mode_select
-                    .button_str("Global")
-                    .with(|b| {
-                        if matches!(algorithm.mode, AlignMode::Global) {
-                            b.select();
-                        }
-                    })
-                    .with_name("global radio"),
-            )
-            .child(
-                mode_select
-                    .button_str("Blockwise")
-                    .with(|b| {
-                        if matches!(algorithm.mode, AlignMode::Blockwise(_)) {
-                            b.select();
-                        }
-                    })
-                    .with_name("blockwise radio"),
-            )
-            .child(blocksize_enable),
-    ));
+
+    let mut left_side = LinearLayout::vertical();
+    if cursor.kind == AlgorithmKind::Global {
+        left_side.add_child(Panel::new(
+            LinearLayout::vertical()
+                .child(
+                    mode_select
+                        .button_str("Global")
+                        .with(|b| {
+                            if matches!(algorithm.mode, AlignMode::Global) {
+                                b.select();
+                            }
+                        })
+                        .with_name("global radio"),
+                )
+                .child(
+                    mode_select
+                        .button_str("Blockwise")
+                        .with(|b| {
+                            if matches!(algorithm.mode, AlignMode::Blockwise(_)) {
+                                b.select();
+                            }
+                        })
+                        .with_name("blockwise radio"),
+                )
+                .child(blocksize_enable),
+        ));
+    } else {
+        // this is inserted to make it more consistent with the global algorithm
+        // panel and because the buttons below look weird otherwise
+        left_side.add_child(Panel::new(TextView::new("Semiglobal").min_width(12)));
+    }
     if cursor.preset.is_some() {
         left_side.add_child(Button::new("Apply", move |siv| {
             apply_algorithm(siv, cursor)

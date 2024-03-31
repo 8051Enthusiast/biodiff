@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::align::AlignAlgorithm;
+use crate::align::{AlignAlgorithm, AlignMode};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AlgorithmKind {
@@ -33,7 +33,10 @@ impl Default for PresetList {
         PresetList {
             global: vec![AlignAlgorithm::default()],
             current_global: 0,
-            semiglobal: vec![AlignAlgorithm::default()],
+            semiglobal: vec![AlignAlgorithm {
+                mode: AlignMode::Semiglobal,
+                ..AlignAlgorithm::default_semiglobal()
+            }],
             current_semiglobal: 0,
         }
     }
@@ -46,6 +49,8 @@ impl PresetList {
     pub fn current_semiglobal(&self) -> &AlignAlgorithm {
         &self.semiglobal[self.current_semiglobal as usize]
     }
+    /// gets the current preset at the cursor, giving back the default
+    /// if the cursor doesn't have an index
     pub fn get(&self, cursor: PresetCursor) -> AlignAlgorithm {
         match cursor {
             PresetCursor {
@@ -63,9 +68,11 @@ impl PresetList {
             PresetCursor {
                 preset: None,
                 kind: AlgorithmKind::Semiglobal,
-            } => AlignAlgorithm::default(),
+            } => AlignAlgorithm::default_semiglobal(),
         }
     }
+    /// sets the preset at the cursor, returning false if the name is
+    /// already taken
     pub fn set(&mut self, cursor: PresetCursor, settings: AlignAlgorithm) -> bool {
         let arr = match cursor.kind {
             AlgorithmKind::Global => &mut self.global,

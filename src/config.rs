@@ -9,7 +9,9 @@ use crate::{
     style::Style,
 };
 
-
+/// Prior to version 1 of the config, users could use local
+/// alignment, and semiglobal alignment was just done by ignoring
+/// this parameter.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum AlignModeV0 {
     Local,
@@ -20,6 +22,7 @@ pub enum AlignModeV0 {
 impl From<AlignModeV0> for AlignMode {
     fn from(s: AlignModeV0) -> Self {
         match s {
+            // local alignment is now replaced by global alignment
             AlignModeV0::Local => AlignMode::Global,
             AlignModeV0::Global => AlignMode::Global,
             AlignModeV0::Blockwise(blocksize) => AlignMode::Blockwise(blocksize),
@@ -78,7 +81,9 @@ impl From<ConfigV0> for ConfigV1 {
     fn from(s: ConfigV0) -> Self {
         let mut presets = PresetList::default();
         presets.global.insert(0, s.algo.into());
-        presets.semiglobal.insert(0, s.algo.into());
+        presets
+            .semiglobal
+            .insert(0, AlignAlgorithm::default_semiglobal());
         ConfigV1 {
             presets,
             style: s.style,
