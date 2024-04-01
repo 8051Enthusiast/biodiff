@@ -42,10 +42,12 @@ You can also select a region on one file and by pressing F3 the aligning algorit
 
 Installation
 ------------
+If you're lucky, there will be a package available in your primary package manager, see the [repology page](https://repology.org/project/biodiff/versions).
 There should be downloadable binary files for some environments under the [releases page](https://github.com/8051Enthusiast/biodiff/releases).
 Alternatively, you can also install this using `cargo` by doing `cargo install biodiff`.
 
 You can also execute directly using code from this repository by executing `cargo run --release -- file_a file_b`.
+Note that configuration files are only guaranteed to stay compatible between tagged releases.
 
 By default, settings are stored in a [platform-specific user directory](https://github.com/dirs-dev/dirs-rs#Features).
 To use a custom settings directory, set the `BIODIFF_CONFIG_DIR` environment variable to the desired directory path before running `biodiff`.
