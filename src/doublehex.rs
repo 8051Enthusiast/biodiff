@@ -5,8 +5,8 @@ use crate::{
     cursor::{CursorActive, CursorState},
     style::{
         background_color, byte, byte_effect, disp_addr, disp_ascii, disp_bottom_addr,
-        disp_column_blocks, spacer_background_color, ByteData, ColumnSetting, Style, FRONT_PAD,
-        MIDDLE_PAD,
+        disp_column_blocks, spacer_background_color, ByteData, ColumnSetting, Layout, Style,
+        FRONT_PAD, MIDDLE_PAD,
     },
     util::autocorrelation,
 };
@@ -129,31 +129,28 @@ impl DoubleHexContext {
         self.cursor.get_size_y() + 1
     }
     fn full_width(&self) -> usize {
-        if self.style.vertical {
-            self.hor_half_width()
-        } else {
-            2 * self.hor_half_width() + MIDDLE_PAD.width()
+        match self.style.layout {
+            Layout::Vertical => self.hor_half_width(),
+            Layout::Horizontal => 2 * self.hor_half_width() + MIDDLE_PAD.width(),
         }
     }
     fn full_height(&self) -> usize {
-        if self.style.vertical {
-            self.cursor.get_size_y() * 2 + 3
-        } else {
-            self.cursor.get_size_y() + 2
+        match self.style.layout {
+            Layout::Vertical => self.cursor.get_size_y() * 2 + 3,
+            Layout::Horizontal => self.cursor.get_size_y() + 2,
         }
     }
     /// Prints a whole screen of hex data
     pub fn print_doublehex_screen<B: Backend>(&self, content: &[DoubleHexLine], backend: &mut B) {
         for (i, line) in content.iter().enumerate() {
-            if self.style.vertical {
-                line.print_vert(
+            match self.style.layout {
+                Layout::Vertical => line.print_vert(
                     backend,
                     [i + 1, self.vert_half_height() + i + 1],
                     self.style,
-                );
-            } else {
+                ),
                 // we offset because of the title bar
-                line.print_hor(backend, i + 1, self.style);
+                Layout::Horizontal => line.print_hor(backend, i + 1, self.style),
             }
         }
     }
@@ -188,10 +185,9 @@ impl DoubleHexContext {
     }
     /// converts a position in the first half into one of the second half
     fn shift_to_second(&self, pos: (usize, usize)) -> (usize, usize) {
-        if self.style.vertical {
-            (pos.0, pos.1 + self.vert_half_height())
-        } else {
-            (pos.0 + self.hor_half_width() + MIDDLE_PAD.width(), pos.1)
+        match self.style.layout {
+            Layout::Vertical => (pos.0, pos.1 + self.vert_half_height()),
+            Layout::Horizontal => (pos.0 + self.hor_half_width() + MIDDLE_PAD.width(), pos.1),
         }
     }
     /// returns the position of the second cursor on the hex view
@@ -245,14 +241,13 @@ impl DoubleHexContext {
             } else {
                 rows - line - 1
             };
-            if self.style.vertical {
-                content[line].print_vert(
+            match self.style.layout {
+                Layout::Vertical => content[line].print_vert(
                     backend,
                     [line + 1, self.vert_half_height() + line + 1],
                     self.style,
-                )
-            } else {
-                content[line].print_hor(backend, line + 1, self.style)
+                ),
+                Layout::Horizontal => content[line].print_hor(backend, line + 1, self.style),
             }
         }
     }
@@ -400,15 +395,14 @@ impl DoubleHexContext {
             BackgroundColor::Blank,
             Effect::inverted(),
         );
-        if self.style.vertical {
-            printer.set_line(self.vert_half_height())
-        } else {
-            printer.append_text(
+        match self.style.layout {
+            Layout::Vertical => printer.set_line(self.vert_half_height()),
+            Layout::Horizontal => printer.append_text(
                 MIDDLE_PAD,
                 Color::HexSame,
                 BackgroundColor::Blank,
                 Effect::inverted(),
-            );
+            ),
         }
         let second_title = format_title(short_second);
         printer.append_text(

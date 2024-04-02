@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     align::{rustbio::RustBio, AlignAlgorithm, AlignBackend, AlignMode, Banded},
     preset::PresetList,
-    style::Style,
+    style::{ColumnSetting, DisplayMode, Layout, Style},
 };
 
 /// Prior to version 1 of the config, users could use local
@@ -71,10 +71,41 @@ impl From<AlignAlgorithmV0> for AlignAlgorithm {
     }
 }
 
+#[derive(Clone, Copy, Default, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StyleV0 {
+    pub mode: DisplayMode,
+    pub ascii_col: bool,
+    pub bars_col: bool,
+    pub vertical: bool,
+    pub spacer: bool,
+    pub right_to_left: bool,
+    pub column_count: ColumnSetting,
+    pub no_scroll: bool,
+    #[serde(skip)]
+    pub addr_width: u8,
+}
+
+impl From<StyleV0> for Style {
+    fn from(s: StyleV0) -> Self {
+        Style {
+            mode: s.mode,
+            ascii_col: s.ascii_col,
+            bars_col: s.bars_col,
+            layout: Layout::vertical(s.vertical),
+            spacer: s.spacer,
+            right_to_left: s.right_to_left,
+            column_count: s.column_count,
+            no_scroll: s.no_scroll,
+            addr_width: s.addr_width,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConfigV0 {
     pub algo: AlignAlgorithmV0,
-    pub style: Style,
+    pub style: StyleV0,
 }
 
 impl From<ConfigV0> for ConfigV1 {
@@ -86,7 +117,7 @@ impl From<ConfigV0> for ConfigV1 {
             .insert(0, AlignAlgorithm::default_semiglobal());
         ConfigV1 {
             presets,
-            style: s.style,
+            style: s.style.into(),
         }
     }
 }

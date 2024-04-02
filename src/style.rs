@@ -292,13 +292,31 @@ impl FromStr for ColumnSetting {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Layout {
+    Vertical,
+    Horizontal,
+}
+
+impl Layout {
+    /// Returns Vertical if true, otherwise Horizontal.
+    /// For converting the old boolean flag to this enum.
+    pub fn vertical(is: bool) -> Self {
+        if is {
+            Self::Vertical
+        } else {
+            Self::Horizontal
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Style {
     pub mode: DisplayMode,
     pub ascii_col: bool,
     pub bars_col: bool,
-    pub vertical: bool,
+    pub layout: Layout,
     pub spacer: bool,
     pub right_to_left: bool,
     pub column_count: ColumnSetting,
@@ -396,26 +414,27 @@ impl Style {
                 0
             }
             + if self.bars_col { MIDDLE_PAD.width() } else { 0 };
-        if self.vertical {
-            single_overhead
-        } else {
-            2 * single_overhead + MIDDLE_PAD.width()
+        match self.layout {
+            Layout::Vertical => single_overhead,
+            Layout::Horizontal => 2 * single_overhead + MIDDLE_PAD.width(),
         }
     }
     /// returns the number of columns that are displayed on a given display width
     /// Goes in steps of 8 above 24, steps of 4 for 8 - 24 and steps of 1 for < 8
     /// in case the column_count is not set, otherwise it uses the column_count
     pub fn get_doublehex_dims(&self, columns: usize, rows: usize) -> ((usize, usize), usize) {
-        let y = if self.vertical {
-            rows.saturating_sub(3) / 2
-        } else {
-            rows.saturating_sub(2)
+        let y = match self.layout {
+            Layout::Vertical => rows.saturating_sub(3) / 2,
+            Layout::Horizontal => rows.saturating_sub(2),
         };
         let max_col = if columns <= self.const_overhead() {
             1
         } else {
             let available_col = columns - self.const_overhead();
-            let multiplicity = if self.vertical { 1 } else { 2 };
+            let multiplicity = match self.layout {
+                Layout::Vertical => 1,
+                Layout::Horizontal => 2,
+            };
             let unit_width = self.size_per_byte() * multiplicity;
             // take out one space from the available columns for each 8 units
             let without_spacer = if self.spacer {
@@ -461,7 +480,7 @@ impl Default for Style {
             mode: DisplayMode::Hex,
             ascii_col: false,
             bars_col: false,
-            vertical: false,
+            layout: Layout::Horizontal,
             spacer: false,
             right_to_left: false,
             no_scroll: false,

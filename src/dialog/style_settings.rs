@@ -1,4 +1,4 @@
-use crate::config::Settings;
+use crate::{config::Settings, style::Layout};
 
 use super::*;
 const TEXT_WIDTH: usize = 6;
@@ -44,7 +44,7 @@ fn apply_style(siv: &mut Cursive) {
         mode,
         ascii_col,
         bars_col,
-        vertical,
+        layout: Layout::vertical(vertical),
         spacer,
         right_to_left,
         column_count,
@@ -128,12 +128,12 @@ pub fn style(siv: &mut Cursive) -> impl View {
         .child(
             "Vertical Split:",
             Checkbox::new()
-                .with_checked(style_settings.vertical)
+                .with_checked(style_settings.layout == Layout::Vertical)
                 .on_change(|s, check| {
                     on_hexview(
                         s,
-                        move |v| v.dh.style.vertical = check,
-                        move |v| v.dh.style.vertical = check,
+                        move |v| v.dh.style.layout = Layout::vertical(check),
+                        move |v| v.dh.style.layout = Layout::vertical(check),
                     )
                 })
                 .with_name("vertical"),
