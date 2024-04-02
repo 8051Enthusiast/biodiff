@@ -149,7 +149,7 @@ impl Config {
     }
 
     pub fn save_config(&self) -> Result<(), Box<dyn Error + 'static>> {
-        let config = serde_json::to_string(self)?;
+        let config = serde_json::to_string_pretty(self)?;
         let r = std::fs::create_dir_all(Self::config_path()?);
         if let Err(ref e) = r {
             match e.kind() {
