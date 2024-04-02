@@ -4,7 +4,7 @@ use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    align::{AlignAlgorithm, AlignMode, Banded},
+    align::{rustbio::RustBio, AlignAlgorithm, AlignBackend, AlignMode, Banded},
     preset::PresetList,
     style::Style,
 };
@@ -66,7 +66,7 @@ impl From<AlignAlgorithmV0> for AlignAlgorithm {
             mismatch_score: s.mismatch_score,
             match_score: s.match_score,
             mode: s.mode.into(),
-            band: s.band,
+            backend: AlignBackend::RustBio(RustBio { band: s.band }),
         }
     }
 }

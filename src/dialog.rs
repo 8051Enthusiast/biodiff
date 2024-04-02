@@ -9,7 +9,7 @@ mod style_settings;
 use crate::{
     align::{
         AlignAlgorithm, AlignMode, Banded, FlatAlignProgressMessage, FlatAlignmentContext,
-        DEFAULT_BLOCKSIZE, DEFAULT_KMER, DEFAULT_WINDOW,
+        DEFAULT_BLOCKSIZE,
     },
     backend::Dummy,
     config::Config,

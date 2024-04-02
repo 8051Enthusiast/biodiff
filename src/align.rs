@@ -1,4 +1,4 @@
-mod rustbio;
+pub mod rustbio;
 use std::{
     ops::Range,
     sync::{
@@ -14,11 +14,10 @@ use bio::alignment::AlignmentOperation as Op;
 use realfft::{num_complex::Complex64, RealFftPlanner, RealToComplex};
 use serde::{Deserialize, Serialize};
 
-use self::rustbio::{align_banded, RustBio};
+pub use self::rustbio::Banded;
+use self::rustbio::RustBio;
 
 pub const DEFAULT_BLOCKSIZE: usize = 8192;
-pub const DEFAULT_KMER: usize = 8;
-pub const DEFAULT_WINDOW: usize = 6;
 
 /// An align mode, can be either Local for local alignment, global for global alignment,
 /// or Blockwise with a given block size. The blockwise mode starts from a given position
@@ -51,12 +50,19 @@ trait Align {
     fn align(&self, algo: &AlignAlgorithm, mode: InternalMode, x: &[u8], y: &[u8]) -> Vec<Op>;
 }
 
-/// Determines whether to use the banded variant of the algorithm with given k-mer length
-/// and window size
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Banded {
-    Normal,
-    Banded { kmer: usize, window: usize },
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "backend")]
+pub enum AlignBackend {
+    #[serde(rename = "rustbio")]
+    RustBio(RustBio),
+}
+
+impl AlignBackend {
+    fn aligner(&self) -> &dyn Align {
+        match self {
+            AlignBackend::RustBio(r) => r,
+        }
+    }
 }
 
 /// Contains parameters to run the alignment algorithm with
@@ -69,7 +75,7 @@ pub struct AlignAlgorithm {
     pub mismatch_score: i32,
     pub match_score: i32,
     pub mode: AlignMode,
-    pub band: Banded,
+    pub backend: AlignBackend,
 }
 
 impl Default for AlignAlgorithm {
@@ -81,7 +87,7 @@ impl Default for AlignAlgorithm {
             mismatch_score: -1,
             match_score: 1,
             mode: AlignMode::Blockwise(DEFAULT_BLOCKSIZE),
-            band: Banded::Normal,
+            backend: AlignBackend::RustBio(RustBio::default()),
         }
     }
 }
@@ -160,11 +166,7 @@ impl AlignAlgorithm {
         if x[..] == y[..] {
             return vec![Op::Match; x.len()];
         }
-        if self.band == Banded::Normal {
-            RustBio.align(self, mode, x, y)
-        } else {
-            align_banded(self, mode, x, y)
-        }
+        self.backend.aligner().align(self, mode, x, y)
     }
 
     /// Aligns x to y as a whole

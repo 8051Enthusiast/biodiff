@@ -1,4 +1,8 @@
 use crate::{
+    align::{
+        rustbio::{RustBio, DEFAULT_KMER, DEFAULT_WINDOW},
+        AlignBackend,
+    },
     config::Settings,
     preset::{AlgorithmKind, PresetCursor},
 };
@@ -7,6 +11,22 @@ use self::algorithm_presets::refresh_presets;
 
 use super::*;
 const TEXT_WIDTH: usize = 10;
+
+fn apply_rustbio(siv: &mut Cursive, rustbio: &mut RustBio, errors: &mut String) {
+    // read band settings
+    if siv
+        .call_on_name("banded", |v: &mut Checkbox| v.is_checked())
+        .unwrap()
+    {
+        let (mut k, mut w) = (DEFAULT_KMER, DEFAULT_WINDOW);
+        parse_box(siv, "kmer len", &mut k, errors);
+        parse_box(siv, "window size", &mut w, errors);
+        rustbio.band = Banded::Banded { kmer: k, window: w };
+    } else {
+        rustbio.band = Banded::Normal;
+    }
+}
+
 /// Reads the algorithm settings from the algorithm dialog box and applies it
 /// onto the AlignAlgorithm stored in the user data.
 fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {
@@ -35,18 +55,8 @@ fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {
     );
     parse_box(siv, "match score", &mut algorithm.match_score, &mut errors);
 
-    // read band settings
-    if siv
-        .call_on_name("banded", |v: &mut Checkbox| v.is_checked())
-        .unwrap()
-    {
-        let (mut k, mut w) = (DEFAULT_KMER, DEFAULT_WINDOW);
-        parse_box(siv, "kmer len", &mut k, &mut errors);
-        parse_box(siv, "window size", &mut w, &mut errors);
-        algorithm.band = Banded::Banded { kmer: k, window: w };
-    } else {
-        algorithm.band = Banded::Normal;
-    }
+    let AlignBackend::RustBio(rustbio) = &mut algorithm.backend;
+    apply_rustbio(siv, rustbio, &mut errors);
     let mut radio_is_selected = |s| {
         siv.call_on_name(s, |v: &mut RadioButton<String>| v.is_selected())
             .unwrap()
@@ -95,6 +105,45 @@ fn apply_algorithm(siv: &mut Cursive, cursor: PresetCursor) {
     }
     refresh_presets(siv);
     close_top_maybe_quit(siv)
+}
+
+fn rustbio_settings(rustbio: RustBio) -> impl View {
+    let mut layout = LinearLayout::vertical();
+    let is_usize = |s: &str| s.parse::<usize>().is_ok();
+    layout.add_child(
+        Checkbox::new()
+            .with_checked(!matches!(rustbio.band, crate::align::Banded::Normal,))
+            .on_change(|siv, state| {
+                siv.call_on_name("band args", |v: &mut EnableableView<ListView>| {
+                    v.set_enabled(state)
+                });
+            })
+            .with_name("banded"),
+    );
+    // get current k-mer and window size if enabled, otherwise use defaults
+    let (k, w) = match rustbio.band {
+        Banded::Normal => (DEFAULT_KMER, DEFAULT_WINDOW),
+        Banded::Banded { kmer, window } => (kmer, window),
+    };
+
+    // the band args are disabled when the `banded` checkbox is unset, so
+    // it is wrapped in an EnableableView
+    let mut band_args = EnableableView::new(
+        ListView::new()
+            .child(
+                "k-mer Len: ",
+                validated_box("kmer len", k.to_string(), TEXT_WIDTH, is_usize),
+            )
+            .child(
+                "Window:",
+                validated_box("window size", w.to_string(), TEXT_WIDTH, is_usize),
+            ),
+    );
+    if matches!(rustbio.band, Banded::Normal) {
+        band_args.disable();
+    }
+    layout.add_child(band_args.with_name("band args"));
+    layout
 }
 
 /// Creates a dialog box for algorithm settings.
@@ -158,46 +207,16 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
                 TEXT_WIDTH,
                 is_i32,
             ),
-        )
-        .child(
-            "Banded:",
-            Checkbox::new()
-                .with_checked(!matches!(algorithm.band, crate::align::Banded::Normal))
-                .on_change(|siv, state| {
-                    siv.call_on_name("band args", |v: &mut EnableableView<ListView>| {
-                        v.set_enabled(state)
-                    });
-                })
-                .with_name("banded"),
         );
-
-    // get current k-mer and window size if enabled, otherwise use defaults
-    let (k, w) = match algorithm.band {
-        Banded::Normal => (DEFAULT_KMER, DEFAULT_WINDOW),
-        Banded::Banded { kmer, window } => (kmer, window),
+    let rustbio = match &algorithm.backend {
+        AlignBackend::RustBio(r) => *r,
     };
-
-    // the band args are disabled when the `banded` checkbox is unset, so
-    // it is wrapped in an EnableableView
-    let mut band_args = EnableableView::new(
-        ListView::new()
-            .child(
-                "k-mer Len: ",
-                validated_box("kmer len", k.to_string(), TEXT_WIDTH, is_usize),
-            )
-            .child(
-                "Window:",
-                validated_box("window size", w.to_string(), TEXT_WIDTH, is_usize),
-            ),
-    );
-    if matches!(algorithm.band, Banded::Normal) {
-        band_args.disable();
-    }
+    let rustbio = rustbio_settings(rustbio);
 
     // right side consists of common values at the top and band args at the bottom
     let right_side = LinearLayout::vertical()
         .child(right_always_list)
-        .child(band_args.with_name("band args"));
+        .child(rustbio);
 
     // a radio button group determines what AlignMode we choose
     // below that group, there is a textbox that allows changing the blocksize

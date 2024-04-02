@@ -2,9 +2,23 @@ use bio::alignment::{
     pairwise::{self, MatchFunc, Scoring},
     AlignmentOperation,
 };
+use serde::{Deserialize, Serialize};
 
 use super::{Align, AlignAlgorithm, InternalMode};
 
+pub const DEFAULT_KMER: usize = 8;
+pub const DEFAULT_WINDOW: usize = 6;
+/// Determines whether to use the banded variant of the algorithm with given k-mer length
+/// and window size for the rustbio backend
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum Banded {
+    #[default]
+    Normal,
+    Banded {
+        kmer: usize,
+        window: usize,
+    },
+}
 fn scorer(
     algo: &AlignAlgorithm,
     mode: InternalMode,
@@ -25,7 +39,10 @@ fn scorer(
     }
 }
 
-pub struct RustBio;
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct RustBio {
+    pub band: Banded,
+}
 
 impl Align for RustBio {
     fn align(
@@ -36,24 +53,17 @@ impl Align for RustBio {
         y: &[u8],
     ) -> Vec<AlignmentOperation> {
         let scoring = scorer(algo, mode);
-        pairwise::Aligner::with_scoring(scoring)
-            .custom(x, y)
-            .operations
+        match self.band {
+            Banded::Normal => {
+                pairwise::Aligner::with_scoring(scoring)
+                    .custom(x, y)
+                    .operations
+            }
+            Banded::Banded { kmer, window } => {
+                pairwise::banded::Aligner::with_scoring(scoring, kmer, window)
+                    .custom(x, y)
+                    .operations
+            }
+        }
     }
-}
-
-pub fn align_banded(
-    algo: &AlignAlgorithm,
-    mode: InternalMode,
-    x: &[u8],
-    y: &[u8],
-) -> Vec<AlignmentOperation> {
-    let (kmer, window) = match algo.band {
-        super::Banded::Normal => return RustBio.align(algo, mode, x, y),
-        super::Banded::Banded { kmer, window } => (kmer, window),
-    };
-    let scoring = scorer(algo, mode);
-    pairwise::banded::Aligner::with_scoring(scoring, kmer, window)
-        .custom(x, y)
-        .operations
 }
