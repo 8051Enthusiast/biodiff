@@ -1,15 +1,23 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-fn wfa(libpath: &Path) {
-    // 1. Link instructions for Cargo.
+#[cfg(feature = "bundle_wfa2")]
+fn link_wfa() {
+    let mut dst = cmake::build("WFA2-lib");
+    dst.push("lib");
 
     // The directory of the WFA libraries, added to the search path.
-    println!("cargo:rustc-link-search={}", libpath.display());
+    println!("cargo:rustc-link-search={}", dst.display());
     // Link the `wfa-lib` library.
     println!("cargo:rustc-link-lib=static=wfa2");
+}
 
-    // 2. Generate bindings.
+#[cfg(not(feature = "bundle_wfa2"))]
+fn link_wfa() {
+    // Link the `wfa-lib` library.
+    println!("cargo:rustc-link-lib=wfa2");
+}
 
+fn generate_wfa_bindings() {
     let bindings = bindgen::Builder::default()
         .header("WFA2-lib/utils/commons.h")
         // Generate bindings for this header file.
@@ -36,7 +44,6 @@ fn wfa(libpath: &Path) {
 }
 
 fn main() {
-    let mut dst = cmake::build("WFA2-lib");
-    dst.push("lib");
-    wfa(&dst);
+    link_wfa();
+    generate_wfa_bindings();
 }

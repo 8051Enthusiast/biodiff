@@ -1,10 +1,13 @@
 [package]
-name = "wfa2-sys"
+name = "biodiff-wfa2-sys"
 version = "2.3.4"
 edition = "2021"
+links = "wfa2"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["bundle_wfa2"]
+bundle_wfa2 = []
 
 [build-dependencies]
-cmake = "0.1"
+cmake = { version = "0.1" }
 bindgen = "0.69.4"

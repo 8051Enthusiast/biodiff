@@ -125,6 +125,7 @@ name = "biodiff"
 version = "1.1.0"
 dependencies = [
  "bio",
+ "biodiff-wfa2-sys",
  "crossbeam-utils",
  "crossterm 0.26.1",
  "cursive",
@@ -136,7 +137,14 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-width",
- "wfa2-sys",
+]
+
+[[package]]
+name = "biodiff-wfa2-sys"
+version = "2.3.4"
+dependencies = [
+ "bindgen",
+ "cmake",
 ]
 
 [[package]]
@@ -1447,14 +1455,6 @@ name = "wasi"
 version = "0.11.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
-
-[[package]]
-name = "wfa2-sys"
-version = "2.3.4"
-dependencies = [
- "bindgen",
- "cmake",
-]
 
 [[package]]
 name = "which"

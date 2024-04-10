@@ -1,7 +1,7 @@
 use std::{ffi::c_int, marker::PhantomData};
 
 use serde::{Deserialize, Serialize};
-use wfa2_sys::*;
+use biodiff_wfa2_sys::*;
 
 use super::{Align, AlignAlgorithm, InternalMode};
 
