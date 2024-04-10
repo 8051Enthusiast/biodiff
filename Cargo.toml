@@ -18,7 +18,7 @@ members = [
 
 [dependencies]
 bio = "1.6.0"
-crossterm = "0.26.1"
+crossterm = "0.25.0"
 crossbeam-utils = "0.8.19"
 cursive_buffered_backend = "0.6.1"
 unicode-width = "0.1.11"
