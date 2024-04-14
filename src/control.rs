@@ -16,7 +16,7 @@ use crate::{
     backend::{send_cross_actions, Action, Cross, Dummy},
     config::{Config, Settings},
     cursor::CursorState,
-    dialog,
+    dialog::{self, continue_dialog},
     doublehex::DoubleHexContext,
     file::FileState,
     view::{self, Aligned, AlignedMessage},
@@ -26,7 +26,7 @@ use std::{
     sync::mpsc::{channel, Receiver, Sender},
 };
 
-type CursiveCallback = Box<dyn Fn(&mut Cursive) + 'static + Send>;
+pub type CursiveCallback = Box<dyn Fn(&mut Cursive) -> DelegateEvent + 'static + Send>;
 
 /// This is the main loop, here we switch between our custom backend and the cursive backend
 /// when opening dialog boxes. This is done because initially, the cursive backend was too flickery.
@@ -38,28 +38,31 @@ pub fn run(x: FileState, y: FileState) {
     let digits = x.address_digits().max(y.address_digits());
     settings.style.addr_width = digits;
     let mut hv = HexView::new(x, y);
+    let mut event = DelegateEvent::Continue;
     loop {
         *match hv {
             HexView::Aligned(ref mut v, _, _) => &mut v.dh.style,
             HexView::Unaligned(ref mut v) => &mut v.dh.style,
         } = settings.style;
-        let mut cross = Cross::init();
-        let (hv_new, quit) = hv.process_cross(&mut cross, &settings);
-        hv = hv_new;
-        cross.uninit();
+        match event {
+            DelegateEvent::Continue
+            | DelegateEvent::SwitchToAlign
+            | DelegateEvent::SwitchToUnalign => {
+                let mut cross = Cross::init();
+                (hv, event) = hv.process_cross(&mut cross, &settings, event);
+                cross.uninit();
+            }
+            DelegateEvent::OpenDialog(dia) => {
+                (hv, settings, event) = hv.show_dialog(dia, settings);
+            }
+            DelegateEvent::Quit => break,
+        }
         // the column setting can be changed during the non-dialog,
         // so we need to keep it updated here
         settings.style = match &hv {
             HexView::Aligned(v, _, _) => v.dh.style,
             HexView::Unaligned(v) => v.dh.style,
         };
-        let (hv_new, settings_new) = match quit {
-            DelegateEvent::Quit => break,
-            DelegateEvent::OpenDialog(dia) => hv.show_dialog(dia, settings),
-            _ => (hv, settings),
-        };
-        hv = hv_new;
-        settings = settings_new;
     }
 }
 
@@ -67,7 +70,7 @@ pub fn run(x: FileState, y: FileState) {
 /// a backend for painting.
 /// The aligned view also contains a channel for messages, as the alignment
 /// algorithms need to dynamically append/prepend new blocks to the view
-/// and the crossbeam backend also sends user events over that.
+/// and the crossterm backend also sends user events over that.
 pub enum HexView {
     Aligned(
         view::Aligned,
@@ -142,45 +145,58 @@ impl HexView {
             HexView::Unaligned(u) => u.selection_file_ranges(),
         }
     }
-    /// control loop for crossbeam backend, switches the view between aligned and unaligned when
+    /// control loop for crossterm backend, switches the view between aligned and unaligned when
     /// requested and runs event loops
-    fn process_cross(self, cross: &mut Cross, settings: &Settings) -> (Self, DelegateEvent) {
+    fn process_cross(
+        self,
+        cross: &mut Cross,
+        settings: &Settings,
+        mut event: DelegateEvent,
+    ) -> (Self, DelegateEvent) {
         let mut view = self;
-        let mut quit;
-        let quit_reason = loop {
-            let q = view.event_proc(cross);
-            view = match q {
+        loop {
+            view = match event {
                 // delegate to top-level control loop
                 DelegateEvent::Quit | DelegateEvent::OpenDialog(_) => {
-                    quit = match &mut view {
-                        HexView::Aligned(v, _, _) => !v.process_escape(cross),
-                        HexView::Unaligned(v) => !v.process_escape(cross),
-                    }
-                    .then_some(q);
+                    event = if !match &mut view {
+                        HexView::Aligned(v, _, _) => v.process_escape(cross),
+                        HexView::Unaligned(v) => v.process_escape(cross),
+                    } {
+                        event
+                    } else {
+                        DelegateEvent::Continue
+                    };
                     view
                 }
                 DelegateEvent::SwitchToAlign => {
-                    quit = None;
+                    event = DelegateEvent::Continue;
                     let select = view.selection();
                     let align_info = &settings.presets.current_info();
                     view.into_aligned(align_info, select)
                 }
                 DelegateEvent::SwitchToUnalign => {
-                    quit = None;
+                    event = DelegateEvent::Continue;
                     view.into_unaligned()
                 }
+                DelegateEvent::Continue => view,
             };
-            if let Some(q) = quit {
-                break q;
+            if !matches!(event, DelegateEvent::Continue) {
+                break;
             }
-        };
-        (view, quit_reason)
+            event = view.event_proc(cross);
+            continue;
+        }
+        (view, event)
     }
     /// Setup a cursive instance and shows a dialog constructed through the callback given in `dialog`.
     ///
     /// Note that the settings are placed into the user_data of the cursive instace and can be modified
     /// by the callback.
-    fn show_dialog(self, dialog: CursiveCallback, settings: Settings) -> (Self, Settings) {
+    fn show_dialog(
+        self,
+        dialog: CursiveCallback,
+        settings: Settings,
+    ) -> (Self, Settings, DelegateEvent) {
         let mut siv = cursive::default();
         // this theme is the default theme except that the background color is black
         siv.set_theme(cursiv_theme());
@@ -190,12 +206,14 @@ impl HexView {
             HexView::Aligned(a, send, mut recv) => {
                 siv.add_fullscreen_layer(a.with_name("aligned").full_screen());
                 let mut sink = siv.cb_sink().clone();
+                // placeholder value that will always be overwritten in the scope
+                let mut event = DelegateEvent::Continue;
                 // we create a new thread that converts the `AlignedMessage`s coming from
                 // the alignment threads to callbacks on the cursive instance, so this case
                 // is a bit more complicated than the unaligned one.
                 scope(|s| {
                     let join_handle = s.spawn(|_| cursiv_align_relay(&mut recv, &mut sink));
-                    dialog(&mut siv);
+                    event = dialog(&mut siv);
                     siv.try_run_with(|| {
                         // use the buffered backend as it involves way less flickering
                         crossterm::Backend::init()
@@ -215,13 +233,14 @@ impl HexView {
                     Some(x) => (
                         HexView::Aligned(x, send, recv),
                         siv.take_user_data().unwrap(),
+                        event,
                     ),
                     None => panic!("Internal error, could not downcast view"),
                 }
             }
             HexView::Unaligned(u) => {
                 siv.add_fullscreen_layer(u.with_name("unaligned").full_screen());
-                dialog(&mut siv);
+                let event = dialog(&mut siv);
                 siv.try_run_with(|| {
                     crossterm::Backend::init()
                         .map(|x| Box::new(BufferedBackend::new(x)) as Box<dyn CursiveBackend>)
@@ -229,7 +248,7 @@ impl HexView {
                 .expect("Could not run");
                 // extract the view from the cursive instance
                 match peel_onion(&mut siv) {
-                    Some(v) => (HexView::Unaligned(v), siv.take_user_data().unwrap()),
+                    Some(v) => (HexView::Unaligned(v), siv.take_user_data().unwrap(), event),
                     None => panic!("Internal error, could not downcast view"),
                 }
             }
@@ -274,7 +293,8 @@ fn cursiv_align_relay(recv: &mut Receiver<AlignedMessage>, sink: &mut cursive::C
 }
 
 /// This enum is used for delegating actions to higher level event loops.
-enum DelegateEvent {
+pub enum DelegateEvent {
+    Continue,
     Quit,
     SwitchToAlign,
     SwitchToUnalign,
@@ -287,13 +307,15 @@ fn delegate_action(action: Action) -> Option<DelegateEvent> {
         Action::Quit => Some(DelegateEvent::Quit),
         Action::Align => Some(DelegateEvent::SwitchToAlign),
         Action::Unalign => Some(DelegateEvent::SwitchToUnalign),
-        Action::Algorithm => Some(DelegateEvent::OpenDialog(Box::new(dialog::settings))),
-        Action::Goto => Some(DelegateEvent::OpenDialog(Box::new(dialog::goto))),
-        Action::Search => Some(DelegateEvent::OpenDialog(Box::new(dialog::search))),
-        Action::SetOffset => Some(DelegateEvent::OpenDialog(Box::new(dialog::set_offset))),
-        Action::Help => Some(DelegateEvent::OpenDialog(Box::new(dialog::help_window(
-            dialog::MAIN_HELP,
-        )))),
+        Action::Algorithm => Some(DelegateEvent::OpenDialog(continue_dialog(dialog::settings))),
+        Action::Goto => Some(DelegateEvent::OpenDialog(continue_dialog(dialog::goto))),
+        Action::Search => Some(DelegateEvent::OpenDialog(continue_dialog(dialog::search))),
+        Action::SetOffset => Some(DelegateEvent::OpenDialog(continue_dialog(
+            dialog::set_offset,
+        ))),
+        Action::Help => Some(DelegateEvent::OpenDialog(continue_dialog(
+            dialog::help_window(dialog::MAIN_HELP),
+        ))),
         _otherwise => None,
     }
 }

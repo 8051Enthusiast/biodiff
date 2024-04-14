@@ -13,6 +13,7 @@ use crate::{
     },
     backend::Dummy,
     config::Config,
+    control::{CursiveCallback, DelegateEvent},
     file::FileContent,
     search::{Query, QueryType, SearchContext},
     style::{ColumnSetting, DisplayMode, Style},
@@ -120,6 +121,13 @@ pub fn help_window(help_text: &'static str) -> impl Fn(&mut Cursive) {
                 .button("Close", close_top_maybe_quit),
         )
     }
+}
+
+pub fn continue_dialog(dialog: impl Fn(&mut Cursive) + 'static + Send) -> CursiveCallback {
+    Box::new(move |siv| {
+        dialog(siv);
+        DelegateEvent::Continue
+    })
 }
 
 pub const MAIN_HELP: &str = include_str!("help/main.txt");
