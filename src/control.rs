@@ -1,4 +1,3 @@
-use crossbeam_utils::thread::scope;
 use cursive::{
     backend::Backend as CursiveBackend,
     backends::crossterm,
@@ -10,6 +9,7 @@ use cursive::{
 };
 use cursive::{traits::Resizable, views::ResizedView, Cursive};
 use cursive_buffered_backend::BufferedBackend;
+use std::thread::scope;
 
 use crate::{
     align::{AlignInfo, AlignMode},
@@ -212,7 +212,7 @@ impl HexView {
                 // the alignment threads to callbacks on the cursive instance, so this case
                 // is a bit more complicated than the unaligned one.
                 scope(|s| {
-                    let join_handle = s.spawn(|_| cursiv_align_relay(&mut recv, &mut sink));
+                    let join_handle = s.spawn(|| cursiv_align_relay(&mut recv, &mut sink));
                     event = dialog(&mut siv);
                     siv.try_run_with(|| {
                         // use the buffered backend as it involves way less flickering
@@ -226,8 +226,7 @@ impl HexView {
                     join_handle
                         .join()
                         .expect("Could not join align relay thread");
-                })
-                .expect("Could not join align relay thread");
+                });
                 // extract the view from the cursive instance
                 match peel_onion(&mut siv) {
                     Some(x) => (
@@ -346,11 +345,10 @@ fn unaligned_cross(unaligned: &mut view::Unaligned, cross: &mut Cross) -> Delega
     scope(|s| {
         // both this thread and the send_cross_actions function determine when to quit by
         // checking the output of delegate_action, so make sure this is the same
-        let receiver_thread = s.spawn(|_| unaligned_cross_recv(unaligned, cross, recv));
+        let receiver_thread = s.spawn(|| unaligned_cross_recv(unaligned, cross, recv));
         send_cross_actions(|action| delegate_action(action).is_some(), &mut send);
         quit = receiver_thread.join().unwrap();
-    })
-    .unwrap();
+    });
     quit
 }
 
@@ -392,10 +390,9 @@ fn aligned_cross(
     scope(|s| {
         // both the thread and the send_cross_actions function determine when to quit by
         // checking the output of delegate_action, so make sure this is the same.
-        let receiver_thread = s.spawn(|_| aligned_cross_recv(aligned, cross, recv));
+        let receiver_thread = s.spawn(|| aligned_cross_recv(aligned, cross, recv));
         send_cross_actions(|action| delegate_action(action).is_some(), send);
         quit = receiver_thread.join().unwrap();
-    })
-    .unwrap();
+    });
     quit
 }

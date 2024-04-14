@@ -126,7 +126,6 @@ version = "1.1.0"
 dependencies = [
  "bio",
  "biodiff-wfa2-sys",
- "crossbeam-utils",
  "crossterm",
  "cursive",
  "cursive_buffered_backend",
