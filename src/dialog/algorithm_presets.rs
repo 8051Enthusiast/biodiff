@@ -36,13 +36,6 @@ pub fn presets(siv: &mut Cursive) -> NamedView<impl View> {
         let mut layout = LinearLayout::vertical().child(TextView::new(title(kind)));
         let global = global_radio.clone();
         let semiglobal = semiglobal_radio.clone();
-        layout.add_child(Button::new("New Preset", move |siv| {
-            apply_presets(siv, &global, &semiglobal);
-            let dialog = algorithm(siv, PresetCursor { preset: None, kind });
-            siv.add_layer(dialog);
-        }));
-        let global = global_radio.clone();
-        let semiglobal = semiglobal_radio.clone();
         layout.add_child(Button::new("Edit Current", move |siv| {
             apply_presets(siv, &global, &semiglobal);
             let dialog = algorithm(
@@ -52,6 +45,13 @@ pub fn presets(siv: &mut Cursive) -> NamedView<impl View> {
                     kind,
                 },
             );
+            siv.add_layer(dialog);
+        }));
+        let global = global_radio.clone();
+        let semiglobal = semiglobal_radio.clone();
+        layout.add_child(Button::new("New Preset", move |siv| {
+            apply_presets(siv, &global, &semiglobal);
+            let dialog = algorithm(siv, PresetCursor { preset: None, kind });
             siv.add_layer(dialog);
         }));
         let mut inner_layout = LinearLayout::vertical();
