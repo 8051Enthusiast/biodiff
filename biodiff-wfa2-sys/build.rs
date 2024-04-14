@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[cfg(feature = "bundle_wfa2")]
+#[cfg(feature = "bundle-wfa2")]
 fn link_wfa() {
     let mut dst = cmake::build("WFA2-lib");
     dst.push("lib");
@@ -11,7 +11,7 @@ fn link_wfa() {
     println!("cargo:rustc-link-lib=static=wfa2");
 }
 
-#[cfg(not(feature = "bundle_wfa2"))]
+#[cfg(not(feature = "bundle-wfa2"))]
 fn link_wfa() {
     // Link the `wfa-lib` library.
     println!("cargo:rustc-link-lib=wfa2");

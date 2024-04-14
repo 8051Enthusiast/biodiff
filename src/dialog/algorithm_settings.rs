@@ -1,6 +1,8 @@
 use crate::{
     align::{
-        rustbio::{RustBio, DEFAULT_KMER, DEFAULT_WINDOW}, wfa2::Wfa2, AlgorithmKind, AlignBackend
+        rustbio::{RustBio, DEFAULT_KMER, DEFAULT_WINDOW},
+        wfa2::{Wfa2, WFA2_AVAILABLE},
+        AlgorithmKind, AlignBackend,
     },
     config::Settings,
     preset::PresetCursor,
@@ -49,7 +51,6 @@ fn apply_algorithm(
         siv.call_on_name(s, |v: &mut RadioButton<String>| v.is_selected())
             .unwrap()
     };
-
 
     // read mode settings
     if cursor.kind == AlgorithmKind::Global {
@@ -199,6 +200,7 @@ pub fn algorithm(siv: &mut Cursive, cursor: PresetCursor) -> impl View {
                     if matches!(algorithm.backend, AlignBackend::Wfa2(_)) {
                         b.select();
                     }
+                    b.set_enabled(WFA2_AVAILABLE)
                 })
                 .with_name("wfa2 radio"),
         );

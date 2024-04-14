@@ -5,8 +5,8 @@ edition = "2021"
 links = "wfa2"
 
 [features]
-default = ["bundle_wfa2"]
-bundle_wfa2 = []
+default = ["bundle-wfa2"]
+bundle-wfa2 = []
 
 [build-dependencies]
 cmake = { version = "0.1" }
