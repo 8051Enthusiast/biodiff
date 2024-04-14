@@ -38,6 +38,7 @@ pub fn run(x: FileState, y: FileState) {
         .unwrap_or_default();
     let digits = x.address_digits().max(y.address_digits());
     settings.style.addr_width = digits;
+    settings.load_memory_warn_status();
     let mut hv = HexView::new(x, y);
     let mut event = DelegateEvent::Continue;
     loop {
@@ -197,7 +198,9 @@ impl HexView {
                 match align_info.check_start_align(view.files(), selection) {
                     CheckStatus::Ok => {}
                     CheckStatus::MemoryWarning => {
-                        event = DelegateEvent::OpenDialog(Box::new(dialog::memory_warning))
+                        if !settings.no_memory_warn {
+                            event = DelegateEvent::OpenDialog(Box::new(dialog::memory_warning))
+                        }
                     }
                     CheckStatus::Error(msg) => {
                         event =

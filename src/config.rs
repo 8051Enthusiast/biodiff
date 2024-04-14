@@ -9,6 +9,34 @@ use crate::{
     style::{ColumnSetting, DisplayMode, Layout, Style},
 };
 
+fn config_path() -> Result<PathBuf, std::io::Error> {
+    match std::env::var_os("BIODIFF_CONFIG_DIR") {
+        Some(p) => Ok(PathBuf::from(p)),
+        None => match config_dir() {
+            Some(mut p) => {
+                p.push("biodiff");
+                Ok(p)
+            }
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Could not find configuration directory",
+            )),
+        },
+    }
+}
+
+fn settings_file() -> Result<PathBuf, std::io::Error> {
+    let mut path = config_path()?;
+    path.push("config.json");
+    Ok(path)
+}
+
+fn no_memory_warn_file() -> Result<PathBuf, std::io::Error> {
+    let mut path = config_path()?;
+    path.push("no_memory_warn");
+    Ok(path)
+}
+
 /// Prior to version 1 of the config, users could use local
 /// alignment, and semiglobal alignment was just done by ignoring
 /// this parameter.
@@ -118,6 +146,7 @@ impl From<ConfigV0> for ConfigV1 {
         ConfigV1 {
             presets,
             style: s.style.into(),
+            no_memory_warn: false,
         }
     }
 }
@@ -126,6 +155,21 @@ impl From<ConfigV0> for ConfigV1 {
 pub struct ConfigV1 {
     pub presets: PresetList,
     pub style: Style,
+    #[serde(skip)]
+    pub no_memory_warn: bool,
+}
+
+impl ConfigV1 {
+    pub fn load_memory_warn_status(&mut self) {
+        self.no_memory_warn = no_memory_warn_file().map(|p| p.exists()).unwrap_or(false);
+    }
+    pub fn set_no_memory_warn(&mut self) {
+        self.no_memory_warn = true;
+        // attempt to remember the choice for next start
+        no_memory_warn_file()
+            .and_then(|p| std::fs::write(p, b""))
+            .ok();
+    }
 }
 
 impl From<ConfigV1> for Config {
@@ -154,41 +198,21 @@ pub enum Config {
 }
 
 impl Config {
-    fn config_path() -> Result<PathBuf, std::io::Error> {
-        match std::env::var_os("BIODIFF_CONFIG_DIR") {
-            Some(p) => Ok(PathBuf::from(p)),
-            None => match config_dir() {
-                Some(mut p) => {
-                    p.push("biodiff");
-                    Ok(p)
-                }
-                None => Err(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "Could not find configuration directory",
-                )),
-            },
-        }
-    }
-    fn settings_file() -> Result<PathBuf, std::io::Error> {
-        let mut path = Self::config_path()?;
-        path.push("config.json");
-        Ok(path)
-    }
     pub fn from_config() -> Option<Self> {
-        let config = read_to_string(Self::settings_file().ok()?).ok()?;
+        let config = read_to_string(settings_file().ok()?).ok()?;
         serde_json::from_str(&config).ok()
     }
 
     pub fn save_config(&self) -> Result<(), Box<dyn Error + 'static>> {
         let config = serde_json::to_string_pretty(self)?;
-        let r = std::fs::create_dir_all(Self::config_path()?);
+        let r = std::fs::create_dir_all(config_path()?);
         if let Err(ref e) = r {
             match e.kind() {
                 std::io::ErrorKind::AlreadyExists => (),
                 _ => r?,
             }
         }
-        std::fs::write(Self::settings_file()?, config)?;
+        std::fs::write(settings_file()?, config)?;
         Ok(())
     }
 

@@ -12,7 +12,7 @@ use crate::{
         DEFAULT_BLOCKSIZE,
     },
     backend::Dummy,
-    config::Config,
+    config::{Config, ConfigV1},
     control::{CursiveCallback, DelegateEvent, WrappedEvent},
     file::FileContent,
     search::{Query, QueryType, SearchContext},
@@ -136,21 +136,36 @@ pub fn error_window(error_text: String) -> impl Fn(&mut Cursive) {
 
 pub fn memory_warning(siv: &mut Cursive, event: WrappedEvent) {
     let event_cp = event.clone();
-    siv.add_layer(
-        Dialog::around(TextView::new(
+    let content = LinearLayout::vertical()
+        .child(TextView::new(
             "Alignments of these sizes may cause the program to run out of memory. \
             Continue anyway?",
         ))
+        .child(
+            LinearLayout::horizontal()
+                .child(Checkbox::new().with_name("no_memory_warn"))
+                .child(TextView::new(" Don't show this warning again")),
+        );
+    let cont = move |siv: &mut Cursive| {
+        event_cp.set(DelegateEvent::SwitchToAlign);
+        if siv
+            .call_on_name("no_memory_warn", |v: &mut Checkbox| v.is_checked())
+            .expect("Could not find checkbox")
+        {
+            let config = siv.user_data::<ConfigV1>().expect("Could not find config");
+            config.set_no_memory_warn();
+        }
+        close_top_maybe_quit(siv)
+    };
+    let mut dialog = Dialog::around(content)
         .title("Memory Warning")
-        .button("Continue", move |siv| {
-            event_cp.set(DelegateEvent::SwitchToAlign);
-            close_top_maybe_quit(siv)
-        })
+        .button("Continue", cont)
         .button("Cancel", move |siv| {
             event.set(DelegateEvent::Continue);
             close_top_maybe_quit(siv)
-        }),
-    );
+        });
+    dialog.set_focus(DialogFocus::Button(0));
+    siv.add_layer(dialog);
 }
 
 /// Wraps the callback in a box that also returns DelegateEvent::Continue
