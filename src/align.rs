@@ -54,8 +54,22 @@ impl From<AlignMode> for InternalMode {
     }
 }
 
+pub enum CheckStatus {
+    Ok,
+    MemoryWarning,
+    #[allow(dead_code)]
+    Error(String),
+}
+
 trait Align {
     fn align(&self, algo: &AlignAlgorithm, mode: InternalMode, x: &[u8], y: &[u8]) -> Vec<Op>;
+    fn check_params(
+        &self,
+        algo: &AlignAlgorithm,
+        mode: InternalMode,
+        x_size: usize,
+        y_size: usize,
+    ) -> CheckStatus;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -119,6 +133,42 @@ impl Default for AlignInfo {
 }
 
 impl AlignInfo {
+    pub fn check_start_align(
+        &self,
+        files: [FileContent; 2],
+        selection: [Option<Range<usize>>; 2],
+    ) -> CheckStatus {
+        match selection.clone() {
+            [Some(x), None] | [None, Some(x)] if !x.is_empty() => {
+                let right = selection[1].is_some();
+                let [file0, file1] = files.clone();
+                let y_size = if right { file0.len() } else { file1.len() };
+                let x_size = x.len();
+                let res = self.semiglobal.backend.aligner().check_params(
+                    &self.global,
+                    InternalMode::Semiglobal,
+                    x_size,
+                    y_size,
+                );
+                if !matches!(res, CheckStatus::Ok) {
+                    return res;
+                }
+            }
+            _ => {}
+        };
+        let [x_size, y_size] = if let AlignMode::Blockwise(size) = self.global.mode {
+            [size, size]
+        } else {
+            files.map(|x| x.len())
+        };
+        self.global.backend.aligner().check_params(
+            &self.global,
+            InternalMode::Global,
+            x_size,
+            y_size,
+        )
+    }
+
     pub fn start_align_with_selection(
         &self,
         files: [FileContent; 2],
@@ -127,27 +177,22 @@ impl AlignInfo {
         sender: Sender<AlignedMessage>,
     ) {
         let (selected, right, end) = match selection.clone() {
-            [None, None] | [Some(_), Some(_)] => {
-                let [file0, file1] = files;
-                // if both or none are selected, just do the normal process
-                return self
-                    .global
-                    .start_align(file0, file1, (addr[0], addr[1]), sender);
-            }
-            [Some(x), None] | [None, Some(x)] => {
-                if x.is_empty() {
-                    // selection is empty, does not really make sense to do glocal alignment
-                    let [file0, file1] = files;
-                    return self
-                        .global
-                        .start_align(file0, file1, (addr[0], addr[1]), sender);
-                }
+            // we skip this option if the selection is empty,
+            // since it does not really make sense to do glocal alignment in that case
+            [Some(x), None] | [None, Some(x)] if !x.is_empty() => {
                 let right = selection[1].is_some();
                 (
                     x.clone(),
                     selection[1].is_some(),
                     addr[right as usize] != x.start,
                 )
+            }
+            _ => {
+                let [file0, file1] = files;
+                // if both or none are selected, just do the normal process
+                return self
+                    .global
+                    .start_align(file0, file1, (addr[0], addr[1]), sender);
             }
         };
         let algo = self.clone();
@@ -170,7 +215,9 @@ impl AlignInfo {
         let full_pattern = &files[right as usize].clone();
         let pattern = &files[right as usize].clone()[select.clone()];
         let text = &files[(!right) as usize].clone()[..];
-        let alignment = self.semiglobal.align(pattern, text, InternalMode::Semiglobal);
+        let alignment = self
+            .semiglobal
+            .align(pattern, text, InternalMode::Semiglobal);
 
         let (alignment, textaddr) = ops_pattern_subrange(&alignment);
         let (mut array, pattern_end, text_end) =
@@ -272,7 +319,6 @@ impl AlignAlgorithm {
         }
         self.backend.aligner().align(self, mode, x, y)
     }
-
 
     /// Blockwise alignment in the ascending address direction
     pub fn align_end(

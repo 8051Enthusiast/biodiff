@@ -40,6 +40,9 @@ impl Unaligned {
             dh,
         }
     }
+    pub fn files(&self) -> [FileContent; 2] {
+        self.data.get_data()
+    }
     /// Resizes the view without drawing it, returning if anything changed
     pub fn resize(&mut self, dimensions: (usize, usize)) -> bool {
         let (columns, rows) = dimensions;

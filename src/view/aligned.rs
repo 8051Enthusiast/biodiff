@@ -73,6 +73,9 @@ impl Aligned {
             dh,
         }
     }
+    pub fn files(&self) -> [FileContent; 2] {
+        self.original.clone()
+    }
     /// Checks whether a given range of indexes overlaps with the indexes currently visible.
     fn is_in_view(&self, range: Range<isize>) -> bool {
         let self_range = self.index..self.index + (self.dh.cursor.get_size()) as isize;
@@ -488,7 +491,7 @@ impl Aligned {
         ret
     }
     /// Executes an action corresponding to an escape and returns true
-    /// if anything was done
+    /// if anything was done (currently, this only returns true if the selection was cleared)
     pub fn process_escape<B: Backend>(&mut self, printer: &mut B) -> bool {
         self.clear_selection(printer)
     }

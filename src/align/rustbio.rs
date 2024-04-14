@@ -4,7 +4,7 @@ use bio::alignment::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{Align, AlignAlgorithm, InternalMode};
+use super::{Align, AlignAlgorithm, CheckStatus, InternalMode};
 
 pub const DEFAULT_KMER: usize = 8;
 pub const DEFAULT_WINDOW: usize = 6;
@@ -44,6 +44,8 @@ pub struct RustBio {
     pub band: Banded,
 }
 
+const SIZE_LIMIT: u64 = 1 << 30;
+
 impl Align for RustBio {
     fn align(
         &self,
@@ -65,5 +67,18 @@ impl Align for RustBio {
                     .operations
             }
         }
+    }
+
+    fn check_params(
+        &self,
+        _: &AlignAlgorithm,
+        _: InternalMode,
+        x_size: usize,
+        y_size: usize,
+    ) -> CheckStatus {
+        if x_size as u64 * y_size as u64 > SIZE_LIMIT {
+            return CheckStatus::MemoryWarning;
+        }
+        CheckStatus::Ok
     }
 }

@@ -1,9 +1,9 @@
 use std::{ffi::c_int, marker::PhantomData};
 
-use serde::{Deserialize, Serialize};
 use biodiff_wfa2_sys::*;
+use serde::{Deserialize, Serialize};
 
-use super::{Align, AlignAlgorithm, InternalMode};
+use super::{Align, AlignAlgorithm, CheckStatus, InternalMode};
 
 fn settings(
     algo: &AlignAlgorithm,
@@ -81,6 +81,8 @@ unsafe fn cigar_op_slice(cigar: &cigar_t) -> &[u8] {
     std::slice::from_raw_parts(begin_ptr, len as usize)
 }
 
+const SIZE_LIMIT: u64 = 1 << 30;
+
 impl Align for Wfa2 {
     fn align(
         &self,
@@ -91,7 +93,7 @@ impl Align for Wfa2 {
     ) -> Vec<bio::alignment::AlignmentOperation> {
         let mut align_attr = settings(algo, mode, y.len());
         let aligner = Aligner::new(&mut align_attr, x, y);
-        let mut ret =  vec![];
+        let mut ret = vec![];
         let slice = unsafe { aligner.ops() };
         for &c in slice {
             match c {
@@ -103,5 +105,19 @@ impl Align for Wfa2 {
             }
         }
         ret
+    }
+
+    fn check_params(
+        &self,
+        _: &AlignAlgorithm,
+        mode: InternalMode,
+        x_size: usize,
+        y_size: usize,
+    ) -> CheckStatus {
+        // for global alignment, we use biwfa, but we use regular wfa which uses quadratic memory
+        if matches!(mode, InternalMode::Semiglobal) && x_size as u64 * y_size as u64 > SIZE_LIMIT {
+            return CheckStatus::MemoryWarning;
+        }
+        CheckStatus::Ok
     }
 }

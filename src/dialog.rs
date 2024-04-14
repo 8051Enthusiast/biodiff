@@ -13,7 +13,7 @@ use crate::{
     },
     backend::Dummy,
     config::Config,
-    control::{CursiveCallback, DelegateEvent},
+    control::{CursiveCallback, DelegateEvent, WrappedEvent},
     file::FileContent,
     search::{Query, QueryType, SearchContext},
     style::{ColumnSetting, DisplayMode, Style},
@@ -123,10 +123,41 @@ pub fn help_window(help_text: &'static str) -> impl Fn(&mut Cursive) {
     }
 }
 
+/// An error window that displays a fixed text.
+pub fn error_window(error_text: String) -> impl Fn(&mut Cursive) {
+    move |siv| {
+        siv.add_layer(
+            Dialog::around(TextView::new(&error_text))
+                .title("Error")
+                .button("Close", close_top_maybe_quit),
+        )
+    }
+}
+
+pub fn memory_warning(siv: &mut Cursive, event: WrappedEvent) {
+    let event_cp = event.clone();
+    siv.add_layer(
+        Dialog::around(TextView::new(
+            "Alignments of these sizes may cause the program to run out of memory. \
+            Continue anyway?",
+        ))
+        .title("Memory Warning")
+        .button("Continue", move |siv| {
+            event_cp.set(DelegateEvent::SwitchToAlign);
+            close_top_maybe_quit(siv)
+        })
+        .button("Cancel", move |siv| {
+            event.set(DelegateEvent::Continue);
+            close_top_maybe_quit(siv)
+        }),
+    );
+}
+
+/// Wraps the callback in a box that also returns DelegateEvent::Continue
 pub fn continue_dialog(dialog: impl Fn(&mut Cursive) + 'static + Send) -> CursiveCallback {
-    Box::new(move |siv| {
+    Box::new(move |siv, ev| {
         dialog(siv);
-        DelegateEvent::Continue
+        ev.set(DelegateEvent::Continue)
     })
 }
 
