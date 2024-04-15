@@ -19,6 +19,7 @@ use super::next_difference;
 /// messages for appending/prepending data to the Aligned view.
 pub enum AlignedMessage {
     UserEvent(Action),
+    Initial(Vec<AlignElement>, [usize; 2]),
     Append(Vec<AlignElement>),
     Prepend(Vec<AlignElement>),
 }
@@ -212,6 +213,17 @@ impl Aligned {
         } else {
             self.redraw(printer, false);
         }
+    }
+    /// Appends initial alignment data to the DoubleVec,
+    /// and sets the cursor such that it stays on the same address
+    /// as given in addr.
+    pub fn initial(&mut self, vec: Vec<AlignElement>, addr: [usize; 2]) -> bool {
+        self.data.extend_end(&vec);
+        let cursor_offset = self.dh.cursor.get_index() as isize;
+        let right = !self.dh.cursor_act.is_first();
+        let (Ok(index) | Err(index)) = self.index_address(right, addr[right as usize]);
+        self.index = index - cursor_offset;
+        true
     }
     /// Appends alignment data to the underlying DoubleVec.
     /// Returns true if something in view changed.
@@ -547,6 +559,12 @@ impl Aligned {
     pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: AlignedMessage) {
         match match action {
             AlignedMessage::UserEvent(ev) => ev,
+            AlignedMessage::Initial(vec, addr) => {
+                if self.initial(vec, addr) {
+                    self.refresh(printer);
+                }
+                return;
+            }
             AlignedMessage::Append(vec) => {
                 if self.append(vec) {
                     self.refresh(printer);

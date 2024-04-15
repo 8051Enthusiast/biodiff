@@ -12,10 +12,9 @@ use cursive_buffered_backend::BufferedBackend;
 use std::{cell::Cell, rc::Rc, thread::scope};
 
 use crate::{
-    align::{AlignInfo, AlignMode, CheckStatus},
+    align::{AlignInfo, CheckStatus},
     backend::{send_cross_actions, Action, Cross, Dummy},
     config::{Config, Settings},
-    cursor::CursorState,
     dialog::{self, continue_dialog},
     doublehex::DoubleHexContext,
     file::{FileContent, FileState},
@@ -111,18 +110,11 @@ impl HexView {
             // if the cursor was not placed on any index, we currently do nothing
             // maybe one could think up some better values to align at here or something
             Err(hv) => hv,
-            Ok((left, right, mut dh)) => {
-                if select[0].is_some() == select[1].is_some()
-                    && algo.global.mode == AlignMode::Global
-                {
-                    dh.cursor = CursorState::new((dh.cursor.get_size_x(), dh.cursor.get_size_y()))
-                };
-                HexView::Aligned(
-                    view::Aligned::new(left, right, dh, algo, select, send.clone()),
-                    send,
-                    recv,
-                )
-            }
+            Ok((left, right, dh)) => HexView::Aligned(
+                view::Aligned::new(left, right, dh, algo, select, send.clone()),
+                send,
+                recv,
+            ),
         }
     }
     /// Turns a hexview into an unaligned view at the current cursor

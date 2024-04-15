@@ -276,10 +276,17 @@ impl AlignAlgorithm {
     }
 
     /// Aligns x to y as a whole
-    fn align_whole(&self, x: FileContent, y: FileContent, sender: Sender<AlignedMessage>) {
+    fn align_whole(
+        &self,
+        x: FileContent,
+        y: FileContent,
+        (xaddr, yaddr): (usize, usize),
+        sender: Sender<AlignedMessage>,
+    ) {
         let alignment = self.align(&x, &y, InternalMode::Global);
-        let _ = sender.send(AlignedMessage::Append(
+        let _ = sender.send(AlignedMessage::Initial(
             AlignElement::from_array(&alignment, &x, &y, 0, 0).0,
+            [xaddr, yaddr],
         ));
     }
     /// This function starts the threads for the alignment, which send the data over the sender.
@@ -296,7 +303,7 @@ impl AlignAlgorithm {
         match self.mode {
             AlignMode::Global => {
                 // we only need one thread
-                std::thread::spawn(move || algo2.align_whole(x, y, sender));
+                std::thread::spawn(move || algo2.align_whole(x, y, addr, sender));
             }
             AlignMode::Blockwise(blocksize) => {
                 // for Blockwise, we need one thread for each direction from the cursor
