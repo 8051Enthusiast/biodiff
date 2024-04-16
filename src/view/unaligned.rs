@@ -76,7 +76,7 @@ impl Unaligned {
             .selection
             .selection_status([idx, idx - self.data.shift]);
 
-        let (a, b) = self.data.get(idx);
+        let (a, b) = self.data.get_signed(idx);
         let [a, b] = [
             (&self.searches.0, addr0, sel0, a),
             (&self.searches.1, addr1, sel1, b),
@@ -493,7 +493,7 @@ impl Unaligned {
             self.cursor_index(),
             self.data.bounds(),
             forward,
-            |i| match self.data.get(i) {
+            |i| match self.data.get_signed(i) {
                 (None | Some(_), None) | (None, Some(_)) => true,
                 (Some(a), Some(b)) => a != b && !insertion,
             },

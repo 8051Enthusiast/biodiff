@@ -6,11 +6,11 @@ use crate::{file::FileContent, util::entropy};
 pub trait SignedArray {
     type Item: Clone;
     fn bounds(&self) -> Range<isize>;
-    fn get(&self, index: isize) -> Self::Item;
+    fn get_signed(&self, index: isize) -> Self::Item;
     fn get_range(&self, range: Range<isize>) -> Vec<Self::Item> {
-        range.map(|x| self.get(x)).collect()
+        range.map(|x| self.get_signed(x)).collect()
     }
-    fn binary_search<F, T>(&self, key: &T, cmp: F) -> Result<isize, isize>
+    fn signed_binary_search<F, T>(&self, key: &T, cmp: F) -> Result<isize, isize>
     where
         F: Fn(&T, &Self::Item) -> std::cmp::Ordering,
     {
@@ -18,7 +18,7 @@ pub trait SignedArray {
         let mut eq_idx = None;
         while search_range.end - search_range.start > 0 {
             let middle_index = (search_range.start + search_range.end) >> 1;
-            match cmp(key, &self.get(middle_index)) {
+            match cmp(key, &self.get_signed(middle_index)) {
                 std::cmp::Ordering::Less => search_range.end = middle_index,
                 std::cmp::Ordering::Equal => {
                     eq_idx = Some(middle_index);
@@ -28,6 +28,18 @@ pub trait SignedArray {
             }
         }
         eq_idx.ok_or(search_range.start)
+    }
+}
+
+impl<T: Clone> SignedArray for [T] {
+    type Item = Option<T>;
+
+    fn bounds(&self) -> Range<isize> {
+        0..self.len() as isize
+    }
+
+    fn get_signed(&self, index: isize) -> Option<T> {
+        self.get(index as usize).cloned()
     }
 }
 
@@ -69,7 +81,7 @@ impl<T: Clone> SignedArray for DoubleVec<T> {
         -(self.front.len() as isize)..self.end.len() as isize
     }
 
-    fn get(&self, index: isize) -> Option<T> {
+    fn get_signed(&self, index: isize) -> Option<T> {
         if index < 0 {
             self.front.get((-1 - index) as usize).cloned()
         } else {
@@ -239,7 +251,7 @@ impl SignedArray for CompVec {
         }
     }
 
-    fn get(&self, index: isize) -> Self::Item {
+    fn get_signed(&self, index: isize) -> Self::Item {
         let x = if index < 0 {
             None
         } else {
@@ -298,20 +310,44 @@ mod tests {
         let mut v = DoubleVec::new();
         v.extend_front(&[1, 2, 3, 7, 10, 13]);
         v.extend_end(&[15, 17, 20, 34, 100]);
-        assert_eq!(v.binary_search(&Some(0), Option::<i32>::cmp), Err(-6));
-        assert_eq!(v.binary_search(&Some(1), Option::<i32>::cmp), Ok(-6));
-        assert_eq!(v.binary_search(&Some(15), Option::<i32>::cmp), Ok(0));
-        assert_eq!(v.binary_search(&Some(16), Option::<i32>::cmp), Err(1));
-        assert_eq!(v.binary_search(&Some(17), Option::<i32>::cmp), Ok(1));
-        assert_eq!(v.binary_search(&Some(19), Option::<i32>::cmp), Err(2));
-        assert_eq!(v.binary_search(&Some(35), Option::<i32>::cmp), Err(4));
-        assert_eq!(v.binary_search(&Some(99), Option::<i32>::cmp), Err(4));
-        assert_eq!(v.binary_search(&Some(100), Option::<i32>::cmp), Ok(4));
-        assert_eq!(v.binary_search(&Some(101), Option::<i32>::cmp), Err(5));
+        assert_eq!(
+            v.signed_binary_search(&Some(0), Option::<i32>::cmp),
+            Err(-6)
+        );
+        assert_eq!(v.signed_binary_search(&Some(1), Option::<i32>::cmp), Ok(-6));
+        assert_eq!(v.signed_binary_search(&Some(15), Option::<i32>::cmp), Ok(0));
+        assert_eq!(
+            v.signed_binary_search(&Some(16), Option::<i32>::cmp),
+            Err(1)
+        );
+        assert_eq!(v.signed_binary_search(&Some(17), Option::<i32>::cmp), Ok(1));
+        assert_eq!(
+            v.signed_binary_search(&Some(19), Option::<i32>::cmp),
+            Err(2)
+        );
+        assert_eq!(
+            v.signed_binary_search(&Some(35), Option::<i32>::cmp),
+            Err(4)
+        );
+        assert_eq!(
+            v.signed_binary_search(&Some(99), Option::<i32>::cmp),
+            Err(4)
+        );
+        assert_eq!(
+            v.signed_binary_search(&Some(100), Option::<i32>::cmp),
+            Ok(4)
+        );
+        assert_eq!(
+            v.signed_binary_search(&Some(101), Option::<i32>::cmp),
+            Err(5)
+        );
         let mut v = DoubleVec::new();
         v.extend_front(&[1, 3, 5]);
-        assert_eq!(v.binary_search(&Some(6), Option::<i32>::cmp), Err(0));
-        assert_eq!(v.binary_search(&Some(0), Option::<i32>::cmp), Err(-3));
+        assert_eq!(v.signed_binary_search(&Some(6), Option::<i32>::cmp), Err(0));
+        assert_eq!(
+            v.signed_binary_search(&Some(0), Option::<i32>::cmp),
+            Err(-3)
+        );
     }
     #[test]
     fn common_sequence_iter() {

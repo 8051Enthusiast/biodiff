@@ -123,7 +123,7 @@ impl Aligned {
             }
             let address = self
                 .data
-                .get(base_addr)
+                .get_signed(base_addr)
                 .map(|alignel| [Some(alignel.xaddr), Some(alignel.yaddr)])
                 .unwrap_or_default();
             content.push(DoubleHexLine { address, bytes });
@@ -156,7 +156,7 @@ impl Aligned {
         let idx = self.cursor_index();
         let (a, b) = self
             .data
-            .get(idx)
+            .get_signed(idx)
             .map(|alignel| (alignel.xbyte, alignel.ybyte))
             .unwrap_or_default();
         let addresses = self
@@ -271,7 +271,7 @@ impl Aligned {
     }
     /// get the index of the current file address with the side given by `right`
     fn index_address(&self, right: bool, pos: usize) -> Result<isize, isize> {
-        self.data.binary_search(&pos, |pos, el| {
+        self.data.signed_binary_search(&pos, |pos, el| {
             Some(*pos).cmp(&el.map(|a| if right { a.yaddr } else { a.xaddr }))
         })
     }
@@ -317,7 +317,7 @@ impl Aligned {
     /// get the file addresses of the current cursors
     fn current_cursor_addresses(&self) -> Option<[usize; 2]> {
         self.data
-            .get(self.cursor_index())
+            .get_signed(self.cursor_index())
             .map(|x| [x.xaddr, x.yaddr])
     }
 
@@ -332,12 +332,12 @@ impl Aligned {
                 let [start, end] = range.map(|idx| idx.clamp(bounds.start, bounds.end - 1));
                 let start = self
                     .data
-                    .get(start)
+                    .get_signed(start)
                     .map(|x| if i == 0 { x.xaddr } else { x.yaddr })
                     .unwrap();
                 let end = self
                     .data
-                    .get(end)
+                    .get_signed(end)
                     .map(|x| {
                         if i == 0 {
                             x.xaddr + x.xbyte.is_some() as usize
@@ -408,7 +408,7 @@ impl Aligned {
             self.cursor_index(),
             self.data.bounds(),
             forward,
-            |i| match self.data.get(i).map(|x| (x.xbyte, x.ybyte)) {
+            |i| match self.data.get_signed(i).map(|x| (x.xbyte, x.ybyte)) {
                 None | Some((Some(_), None)) | Some((None, Some(_))) => true,
                 Some((x, y)) => x != y && !insertion,
             },
@@ -585,7 +585,7 @@ impl Aligned {
     /// Turn an Aligned view into its part, including information on where it points
     pub fn destruct(self) -> Result<(FileState, FileState, DoubleHexContext), Self> {
         // we return the original view in case the cursor is outside the files
-        match (self.data.get(self.cursor_index())).map(|a| (a.xaddr, a.yaddr)) {
+        match (self.data.get_signed(self.cursor_index())).map(|a| (a.xaddr, a.yaddr)) {
             Some((xaddr, yaddr)) => {
                 let [original0, original1] = self.original;
                 Ok((
