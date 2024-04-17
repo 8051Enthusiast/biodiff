@@ -1,4 +1,3 @@
-use core::panic;
 use std::{
     sync::mpsc::{sync_channel, Receiver},
     time::{Duration, Instant},
@@ -155,24 +154,6 @@ pub fn autocorrelation(data: &[u8]) -> Vec<f64> {
     a
 }
 
-/// alternative ilog2 implementation because
-/// i don't want to require rust 1.67 for now
-pub fn ilog2(mut n: usize) -> u8 {
-    let mut bit = usize::BITS as u8 / 2;
-    let mut res = 0;
-    if n == 0 {
-        panic!("ilog2(0) is undefined");
-    }
-    while bit > 0 {
-        if n & !((1 << bit) - 1) != 0 {
-            res += bit;
-            n >>= bit;
-        }
-        bit >>= 1;
-    }
-    res
-}
-
 #[cfg(test)]
 mod tests {
     use super::entropy;
@@ -182,18 +163,5 @@ mod tests {
         assert!((entropy(&all) - 1.0).abs() < 0.001);
         let none = vec![0u8; 256];
         assert!(entropy(&none).abs() < 0.001);
-    }
-    #[test]
-    fn ilog2() {
-        for i in 0..usize::BITS {
-            assert_eq!(super::ilog2(1 << i), i as u8);
-        }
-        let mut log = 0;
-        for i in 2..1024 {
-            if i & (i - 1) == 0 {
-                log += 1;
-            }
-            assert_eq!(super::ilog2(i), log);
-        }
     }
 }

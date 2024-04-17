@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 
-use crate::{search::SearchResults, util::ilog2};
+use crate::search::SearchResults;
 
 pub type FileContent = Arc<FileBytes>;
 
@@ -64,6 +64,6 @@ impl FileState {
         if self.content.is_empty() {
             return 2;
         }
-        (ilog2((self.content.len() - 1).max(1)) / 8 + 1) * 2
+        ((self.content.len() - 1).max(1).ilog2() as u8 / 8 + 1) * 2
     }
 }
