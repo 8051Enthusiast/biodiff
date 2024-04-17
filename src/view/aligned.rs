@@ -557,7 +557,7 @@ impl Aligned {
     }
     /// Process events
     pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: AlignedMessage) {
-        match match action {
+        let action = match action {
             AlignedMessage::UserEvent(ev) => ev,
             AlignedMessage::Initial(vec, addr) => {
                 if self.initial(vec, addr) {
@@ -577,10 +577,8 @@ impl Aligned {
                 }
                 return;
             }
-        } {
-            Action::Refresh => self.refresh(printer),
-            otherwise => self.process_move(printer, otherwise),
-        }
+        };
+        self.process_move(printer, action);
     }
     /// Turn an Aligned view into its part, including information on where it points
     pub fn destruct(self) -> Result<(FileState, FileState, DoubleHexContext), Self> {

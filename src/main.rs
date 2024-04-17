@@ -15,6 +15,7 @@ mod util;
 mod view;
 use std::env;
 use std::ffi::OsString;
+use std::path::PathBuf;
 use std::process::exit;
 
 use file::FileState;
@@ -40,11 +41,11 @@ fn main() {
         [a, b] => (a, b),
         _otherwise => print_usage(&args[0]),
     };
-    let x = FileState::from_file(xfile).unwrap_or_else(|e| {
+    let x = FileState::from_file(&PathBuf::from(xfile)).unwrap_or_else(|e| {
         eprintln!("Could not read {}: {}", xfile.to_string_lossy(), e);
         exit(1);
     });
-    let y = FileState::from_file(yfile).unwrap_or_else(|e| {
+    let y = FileState::from_file(&PathBuf::from(yfile)).unwrap_or_else(|e| {
         eprintln!("Could not read {}: {}", yfile.to_string_lossy(), e);
         exit(1);
     });

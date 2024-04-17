@@ -15,7 +15,7 @@ use crate::{
     align::{AlignInfo, CheckStatus},
     backend::{send_cross_actions, Action, Cross, Dummy},
     config::{Config, Settings},
-    dialog::{self, continue_dialog},
+    dialog::{self, continue_dialog, error_window},
     doublehex::DoubleHexContext,
     file::{FileContent, FileState},
     view::{self, Aligned, AlignedMessage},
@@ -48,7 +48,8 @@ pub fn run(x: FileState, y: FileState) {
         match event {
             DelegateEvent::Continue
             | DelegateEvent::SwitchToAlign
-            | DelegateEvent::SwitchToUnalign => {
+            | DelegateEvent::SwitchToUnalign
+            | DelegateEvent::Reload => {
                 let mut cross = Cross::init();
                 (hv, event) = hv.process_cross(&mut cross, &settings, event);
                 cross.uninit();
@@ -145,6 +146,23 @@ impl HexView {
             HexView::Unaligned(u) => u.selection_file_ranges(),
         }
     }
+    fn reload(&mut self, cross: &mut Cross) -> DelegateEvent {
+        match self {
+            HexView::Aligned(_, _, _) => {
+                return DelegateEvent::OpenDialog(continue_dialog(error_window(String::from(
+                    "Reloading files is only supported in the unaligned view",
+                ))))
+            }
+            HexView::Unaligned(u) => {
+                if let Err(e) = u.reload(cross) {
+                    return DelegateEvent::OpenDialog(continue_dialog(error_window(format!(
+                        "Error reloading files: {e}"
+                    ))));
+                }
+            }
+        }
+        DelegateEvent::Continue
+    }
     /// control loop for crossterm backend, switches the view between aligned and unaligned when
     /// requested and runs event loops
     fn process_cross(
@@ -166,6 +184,10 @@ impl HexView {
                     } else {
                         DelegateEvent::Continue
                     };
+                    view
+                }
+                DelegateEvent::Reload => {
+                    event = view.reload(cross);
                     view
                 }
                 DelegateEvent::SwitchToAlign => {
@@ -320,6 +342,7 @@ pub enum DelegateEvent {
     SwitchToAlign,
     SwitchToUnalign,
     OpenDialog(CursiveCallback),
+    Reload,
 }
 
 /// Converts an event to a delegation
@@ -337,6 +360,7 @@ fn delegate_action(action: Action) -> Option<DelegateEvent> {
         Action::Help => Some(DelegateEvent::OpenDialog(continue_dialog(
             dialog::help_window(dialog::MAIN_HELP),
         ))),
+        Action::Refresh => Some(DelegateEvent::Reload),
         _otherwise => None,
     }
 }
@@ -354,7 +378,10 @@ fn unaligned_cross_recv(
         if let Some(q) = delegate_action(action) {
             return q;
         }
-        unaligned.process_action(cross, action);
+        let delegate = unaligned.process_action(cross, action);
+        if !matches!(delegate, DelegateEvent::Continue) {
+            return delegate;
+        }
     }
     DelegateEvent::Quit
 }

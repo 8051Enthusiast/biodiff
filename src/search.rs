@@ -202,6 +202,7 @@ impl SearchResults {
     }
 }
 
+#[derive(Default)]
 pub struct SearchPair(pub Option<SearchResults>, pub Option<SearchResults>);
 
 impl SearchPair {

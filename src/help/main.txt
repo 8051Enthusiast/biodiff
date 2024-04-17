@@ -17,6 +17,7 @@ Keys:
  * F2 or 2: View Unaligned
  * F3 or 3: View Aligned
  * F4 or 4: Alignment Algorithm Settings
+ * F5 or 5: Reload files (only in unaligned view)
  * F6 or 6: Go to address
  * F7 or 7: Search
  * 'n': Jump to next search result

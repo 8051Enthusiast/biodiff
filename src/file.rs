@@ -1,8 +1,41 @@
-use std::{ffi::OsStr, fs::File, io::Read, sync::Arc};
+use std::{fs::File, io::Read, path::Path, sync::Arc};
 
 use crate::{search::SearchResults, util::ilog2};
 
-pub type FileContent = Arc<Vec<u8>>;
+pub type FileContent = Arc<FileBytes>;
+
+#[derive(Debug, Clone)]
+pub struct FileBytes {
+    path: Box<Path>,
+    content: Vec<u8>,
+}
+
+impl FileBytes {
+    pub fn from_file(path: &Path) -> Result<Self, std::io::Error> {
+        let mut file = File::open(path)?;
+        // while the filesize might change between the metadata call and the read_to_end call,
+        // in most cases it will make sure that the vec does not have too much capacity
+        let filesize = file.metadata()?.len() as usize;
+        let mut vec = Vec::with_capacity(filesize);
+        file.read_to_end(&mut vec)?;
+        Ok(FileBytes {
+            path: path.into(),
+            content: vec,
+        })
+    }
+
+    pub fn reread(&self) -> Result<FileContent, std::io::Error> {
+        Ok(Arc::new(Self::from_file(&self.path)?))
+    }
+}
+
+impl std::ops::Deref for FileBytes {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.content
+    }
+}
 
 /// The bytes of a file along with its filename and an index pointing at a byte of the file
 #[derive(Debug)]
@@ -15,21 +48,16 @@ pub struct FileState {
 
 impl FileState {
     /// Reads a PointedFile from a path, with index 0.
-    pub fn from_file(name: &OsStr) -> Result<Self, std::io::Error> {
-        let mut file = File::open(name)?;
-        // while the filesize might change between the metadata call and the read_to_end call,
-        // in most cases it will make sure that the vec does not have too much capacity
-        let filesize = file.metadata()?.len() as usize;
-        let mut vec = Vec::with_capacity(filesize);
-        file.read_to_end(&mut vec)?;
-        let content = Arc::new(vec);
+    pub fn from_file(path: &Path) -> Result<Self, std::io::Error> {
+        let content = FileBytes::from_file(path)?;
         Ok(FileState {
-            name: name.to_string_lossy().to_string(),
-            content,
+            name: path.to_string_lossy().to_string(),
+            content: Arc::new(content),
             index: 0,
             search: None,
         })
     }
+
     /// gets the number of digits used to represent the file addresses
     /// (rounded up to be in pairs
     pub fn address_digits(&self) -> u8 {

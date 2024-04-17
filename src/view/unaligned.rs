@@ -4,6 +4,7 @@ use cursive::{Vec2, View};
 
 use crate::{
     backend::{Action, Backend, Cursiv},
+    control::DelegateEvent,
     cursor::{CursorActive, Move},
     datastruct::{CompVec, SignedArray},
     doublehex::{DoubleHexContext, DoubleHexLine},
@@ -67,6 +68,17 @@ impl Unaligned {
     pub fn refresh<B: Backend>(&mut self, printer: &mut B) {
         let changed = self.resize(printer.size());
         self.redraw(printer, changed);
+    }
+    pub fn reload<B: Backend>(&mut self, printer: &mut B) -> Result<(), std::io::Error> {
+        let new_xvec = self.data.xvec.reread()?;
+        let new_yvec = self.data.yvec.reread()?;
+        self.searches = Default::default();
+        let mut new_data = CompVec::new(new_xvec, new_yvec);
+        new_data.add_second_shift(self.data.shift);
+        self.data = new_data;
+        self.move_back_into_bounds(printer);
+        self.refresh(printer);
+        Ok(())
     }
     /// Paints the cursor at the current position
     fn set_cursor<B: Backend>(&self, printer: &mut B, cursor_act: CursorActive) {
@@ -332,9 +344,8 @@ impl Unaligned {
         self.clear_selection(printer)
     }
     /// Process a single action/event
-    pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: Action) {
+    pub fn process_action<B: Backend>(&mut self, printer: &mut B, action: Action) -> DelegateEvent {
         match action {
-            Action::Refresh => self.refresh(printer),
             Action::CursorFirst => self.change_active_cursor(printer, CursorActive::First),
             Action::CursorBoth => self.change_active_cursor(printer, CursorActive::Both),
             Action::CursorSecond => self.change_active_cursor(printer, CursorActive::Second),
@@ -350,7 +361,8 @@ impl Unaligned {
                 self.refresh(printer);
             }
             otherwise => self.process_move(printer, otherwise),
-        }
+        };
+        DelegateEvent::Continue
     }
     /// jump to a given index with the currently active cursor
     pub fn goto_index<B: Backend>(&mut self, printer: &mut B, index: isize) {
