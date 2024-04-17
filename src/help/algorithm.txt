@@ -24,24 +24,32 @@ penalty plus one Extend Gap penalty for each byte in the gap. Note
 that there will be no Match/Mismatch scores counted in the gaps,
 since the bytes are only on one side.
 
+Backend
+-------
+The supported Backends are:
+* RustBio
+* WFA2
+
+WFA2 can be disabled during compilation and will result in a
+disabled radiobox.
+
+Generally, WFA2 is faster and is even faster when the alignment
+score is lower (meaning that the files are more similar), so it
+is the recommended backend.
+
 Modes
 -----
-Currently, there are three modes: Local, Global and Blockwise.
+For global presets, there are two modes: Global and Blockwise.
 
-Note that local and global alignment can take considerable amounts
-of memory and it is not recommended to run it in non-banded mode
-for files greater than around 64k.
+Note that global alignment can take considerable amounts
+of memory and it is not recommended to run for files greater
+than around 64k when using the RustBio backend. WFA2 uses
+the BiWFA algorithm, which does not use as much memory and
+can practically be used with any size.
 
 * Global alignment takes the two whole files and tries to find the
   optimal alignment such that both sequences start and end at the
   same place.
-
-* Local alignment also aligns the whole file at once, but the
-  sequences do not have to be aligned in their whole. For example
-     ACATGA TAGG
-         GACTAGGATATTA
-  would still be a good alignment and not starting/ending at the same
-  place does not result in gap penalties.
 
 * Blockwise alignment starts from the current cursor position and
   gradually aligns the sequences from there in both directions, taking
@@ -51,13 +59,13 @@ for files greater than around 64k.
   place within larger files and as long as the gaps are small enough
   works good enough.
 
-Banded Alignment
-----------------
+RustBio - Banded Alignment
+--------------------------
 Banded Alignment is a heuristic to speed up alignment. This works by
 first looking at subsequences of k bytes and matching them with those
 of the other sequence, and then aligning the other bytes using a sparse
 matching algorithm with a given window size.
 
 This is much faster, but not perfect and might also fail in certain
-circumstances (for local/global alignment, this will just show no bytes,
+circumstances (for global alignment, this will just show no bytes,
 and for blockwise, it will stop aligning at the place where it fails).
