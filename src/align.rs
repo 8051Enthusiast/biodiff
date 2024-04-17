@@ -10,7 +10,7 @@ use std::{
     thread::available_parallelism,
 };
 
-use crate::{file::FileContent, view::AlignedMessage};
+use crate::{datastruct::SignedArray, file::FileContent, view::AlignedMessage};
 use bio::alignment::AlignmentOperation as Op;
 use realfft::{num_complex::Complex64, RealFftPlanner, RealToComplex};
 use serde::{Deserialize, Serialize};
@@ -298,23 +298,13 @@ impl AlignAlgorithm {
         addr: (usize, usize),
         sender: Sender<AlignedMessage>,
     ) {
-        let algo1 = self.clone();
-        let algo2 = self.clone();
+        let algo = self.clone();
         match self.mode {
             AlignMode::Global => {
-                // we only need one thread
-                std::thread::spawn(move || algo2.align_whole(x, y, addr, sender));
+                std::thread::spawn(move || algo.align_whole(x, y, addr, sender));
             }
             AlignMode::Blockwise(blocksize) => {
-                // for Blockwise, we need one thread for each direction from the cursor
-                // Clone the data for the second thread here
-                let x_cp = x.clone();
-                let y_cp = y.clone();
-                let sender_cp = sender.clone();
-                std::thread::spawn(move || algo1.align_end(x, y, addr, blocksize, sender));
-                std::thread::spawn(move || {
-                    algo2.align_front(x_cp, y_cp, addr, blocksize, sender_cp)
-                });
+                std::thread::spawn(move || algo.align_initial_block(x, y, addr, blocksize, sender));
             }
             AlignMode::Semiglobal => unreachable!("Semiglobal alignment is not supported here"),
         }
@@ -325,6 +315,64 @@ impl AlignAlgorithm {
             return vec![Op::Match; x.len()];
         }
         self.backend.aligner().align(self, mode, x, y)
+    }
+
+    pub fn align_initial_block(
+        &self,
+        x: FileContent,
+        y: FileContent,
+        (xaddr, yaddr): (usize, usize),
+        block_size: usize,
+        sender: Sender<AlignedMessage>,
+    ) {
+        // extend half block size in each direction until we bump into
+        // file starts or file ends
+        let before = (block_size / 2).min(xaddr).min(yaddr);
+        // if we align at the beginning, we have leftover block_size that
+        // we can add to the end
+        let before_deficit = block_size / 2 - before;
+        let after = ((block_size + 1) / 2 + before_deficit)
+            .min(x.len() - xaddr)
+            .min(y.len() - yaddr);
+        let x_block = &x[xaddr - before..xaddr + after];
+        let y_block = &y[yaddr - before..yaddr + after];
+        let aligned = self.align(x_block, y_block, self.mode.into());
+        let (aligned_ops, xaddr_end, yaddr_end) =
+            AlignElement::from_array(&aligned, &x, &y, xaddr - before, yaddr - before);
+        let (Ok(xcursor) | Err(xcursor)) = aligned_ops.signed_binary_search(&xaddr, |lhs, rhs| {
+            let rhs = rhs.unwrap();
+            lhs.cmp(&rhs.xaddr)
+        });
+        let xcursor = xcursor as usize;
+        let (Ok(ycursor) | Err(ycursor)) = aligned_ops.signed_binary_search(&xaddr, |lhs, rhs| {
+            let rhs = rhs.unwrap();
+            lhs.cmp(&rhs.yaddr)
+        });
+        let ycursor = ycursor as usize;
+        let middle = (xcursor + ycursor) / 2;
+        // keep half of the block size in each direction, but if the cursors are
+        // not included, extend it to keep them so that the view still knows where
+        // it is
+        let start = (middle - before / 2).min(xcursor).min(ycursor);
+        let end = (middle + after / 2).max(xcursor).max(ycursor);
+        let ops = aligned_ops[start..end].to_vec();
+        if sender
+            .send(AlignedMessage::Initial(ops, [xaddr, yaddr]))
+            .is_err()
+        {
+            return;
+        }
+        let algo = self.clone();
+        let x_cp = x.clone();
+        let y_cp = y.clone();
+        let sender_cp = sender.clone();
+        let start_addr = (aligned_ops[start].xaddr, aligned_ops[start].yaddr);
+        std::thread::spawn(move || algo.align_front(x_cp, y_cp, start_addr, block_size, sender_cp));
+        let end_addr = aligned_ops
+            .get(end)
+            .map(|x| (x.xaddr, x.yaddr))
+            .unwrap_or((xaddr_end, yaddr_end));
+        self.align_end(x, y, end_addr, block_size, sender);
     }
 
     /// Blockwise alignment in the ascending address direction
