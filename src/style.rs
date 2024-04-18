@@ -481,7 +481,7 @@ impl Default for Style {
             ascii_col: false,
             bars_col: false,
             layout: Layout::Horizontal,
-            spacer: false,
+            spacer: true,
             right_to_left: false,
             no_scroll: false,
             column_count: ColumnSetting::Fit,
