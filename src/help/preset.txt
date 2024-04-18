@@ -19,3 +19,6 @@ You can create a new preset of either type by pressing the
 by pressing the "Edit Current" button. You are also able to
 clone the currently selected preset by pressing "Edit Current",
 renaming it and then pressing "New Preset".
+
+You can delete the currently selected preset by pressing the
+delete key on your keyboard while the cursor is on the preset.

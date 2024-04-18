@@ -1,4 +1,4 @@
-use cursive::direction::Direction;
+use cursive::{direction::Direction, event::Event};
 
 use crate::{
     align::AlgorithmKind,
@@ -12,6 +12,24 @@ fn title(kind: AlgorithmKind) -> &'static str {
     match kind {
         AlgorithmKind::Global => "Global Presets",
         AlgorithmKind::Semiglobal => "Semiglobal Presets",
+    }
+}
+
+fn delete_preset(siv: &mut Cursive, kind: AlgorithmKind, i: usize) {
+    let preset_lists: &mut PresetList = &mut siv
+        .user_data::<Settings>()
+        .expect("Could not get align algorithm info from cursive")
+        .presets;
+    let cursor = PresetCursor {
+        kind,
+        preset: Some(i as u32),
+    };
+    if !preset_lists.delete(cursor) {
+        error_window(String::from(
+            "Cannot delete: At least one preset needs to be present.",
+        ))(siv)
+    } else {
+        refresh_presets(siv);
     }
 }
 
@@ -60,7 +78,8 @@ pub fn presets(siv: &mut Cursive) -> NamedView<impl View> {
             if i as u32 == current {
                 button.select();
             }
-
+            let button = OnEventView::new(button)
+                .on_event(Event::Key(Key::Del), move |siv| delete_preset(siv, kind, i));
             inner_layout.add_child(button);
         }
         layout.add_child(Panel::new(inner_layout.scrollable().scroll_x(true)));

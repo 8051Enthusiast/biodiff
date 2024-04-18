@@ -69,6 +69,28 @@ impl PresetList {
             } => AlignAlgorithm::default_semiglobal(),
         }
     }
+    /// deletes the preset at `cursor`, returning false if deleting
+    /// would leave 0 items
+    pub fn delete(&mut self, cursor: PresetCursor) -> bool {
+        let arr = match cursor.kind {
+            AlgorithmKind::Global => &mut self.global,
+            AlgorithmKind::Semiglobal => &mut self.semiglobal,
+        };
+        let current = match cursor.kind {
+            AlgorithmKind::Global => &mut self.current_global,
+            AlgorithmKind::Semiglobal => &mut self.current_semiglobal,
+        };
+        if arr.len() <= 1 {
+            return false;
+        }
+        let index = cursor.preset.unwrap_or(*current);
+        arr.remove(index as usize);
+        if *current > index {
+            *current -= 1;
+        }
+        *current = (arr.len() as u32 - 1).min(*current);
+        true
+    }
     /// sets the preset at the cursor, returning false if the name is
     /// already taken
     pub fn set(&mut self, cursor: PresetCursor, settings: AlignAlgorithm) -> bool {
