@@ -3,6 +3,7 @@ name = "biodiff-wfa2-sys"
 version = "2.3.4"
 edition = "2021"
 description = "Rust bindings for the WFA2 library"
+license = "MIT"
 exclude = ["/WFA2-lib/img"]
 links = "wfa2"
 
