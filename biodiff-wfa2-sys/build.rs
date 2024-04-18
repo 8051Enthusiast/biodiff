@@ -2,6 +2,10 @@ use std::path::PathBuf;
 
 #[cfg(feature = "bundle-wfa2")]
 fn link_wfa() {
+    if !PathBuf::from("WFA2-lib/CMakeLists.txt").exists() {
+        eprintln!("The WFA2 submodule is not present. Please run `git submodule update --init` to fetch it.");
+        std::process::exit(1);
+    }
     let mut dst = cmake::build("WFA2-lib");
     dst.push("lib");
 
