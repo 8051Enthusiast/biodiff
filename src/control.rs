@@ -35,7 +35,7 @@ pub fn run(x: FileState, y: FileState) {
     let mut settings = Config::from_config()
         .map(Config::into_current_version)
         .unwrap_or_default();
-    let digits = x.address_digits().max(y.address_digits());
+    let digits = x.content.address_digits().max(y.content.address_digits());
     settings.style.addr_width = digits;
     settings.load_memory_warn_status();
     let mut hv = HexView::new(x, y);

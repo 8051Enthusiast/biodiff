@@ -73,8 +73,10 @@ impl Unaligned {
         let new_xvec = self.data.xvec.reread()?;
         let new_yvec = self.data.yvec.reread()?;
         self.searches = Default::default();
+        let digits = new_xvec.address_digits().max(new_yvec.address_digits());
         let mut new_data = CompVec::new(new_xvec, new_yvec);
         new_data.add_second_shift(self.data.shift);
+        self.dh.style.addr_width = digits;
         self.data = new_data;
         self.move_back_into_bounds(printer);
         self.refresh(printer);

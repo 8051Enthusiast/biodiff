@@ -27,6 +27,15 @@ impl FileBytes {
     pub fn reread(&self) -> Result<FileContent, std::io::Error> {
         Ok(Arc::new(Self::from_file(&self.path)?))
     }
+
+    /// gets the number of digits used to represent the file addresses
+    /// (rounded up to be in pairs
+    pub fn address_digits(&self) -> u8 {
+        if self.is_empty() {
+            return 2;
+        }
+        ((self.len() - 1).max(1).ilog2() as u8 / 8 + 1) * 2
+    }
 }
 
 impl std::ops::Deref for FileBytes {
@@ -56,14 +65,5 @@ impl FileState {
             index: 0,
             search: None,
         })
-    }
-
-    /// gets the number of digits used to represent the file addresses
-    /// (rounded up to be in pairs
-    pub fn address_digits(&self) -> u8 {
-        if self.content.is_empty() {
-            return 2;
-        }
-        ((self.content.len() - 1).max(1).ilog2() as u8 / 8 + 1) * 2
     }
 }
