@@ -36,6 +36,12 @@ fn apply_wfa2(_: &mut Cursive, algo: &mut AlignAlgorithm, errors: &mut String) {
     if algo.mode == AlignMode::Semiglobal && algo.match_score != 0 {
         errors.push_str("WFA2 does not support semiglobal alignment with non-zero match score\n");
     }
+    if algo.mismatch_score >= 0 {
+        errors.push_str("WFA2 mismatch score must be negative");
+    }
+    if algo.gap_extend == 0 {
+        errors.push_str("WFA2 gap extend score must not be zero");
+    }
 }
 
 /// Reads the algorithm settings from the algorithm dialog box and applies it
