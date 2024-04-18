@@ -233,7 +233,7 @@ impl BackgroundColor {
 }
 
 /// An effect, for now either reverse video or normal
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Effect {
     pub inverted: bool,
     pub bold: bool,
@@ -274,12 +274,63 @@ impl Effect {
 }
 
 #[derive(Debug)]
+pub struct Plain {
+    stdout: Stdout,
+    buffer: Cursor<Vec<u8>>,
+}
+
+impl Plain {
+    pub fn new() -> Self {
+        Plain {
+            stdout: std::io::stdout(),
+            buffer: Cursor::new(Vec::new()),
+        }
+    }
+}
+
+impl Backend for Plain {
+    fn set_line(&mut self, _: usize) {}
+
+    fn set_pos(&mut self, _: usize, _: usize) {}
+
+    fn append_text(&mut self, text: &str, _: Color, _: BackgroundColor, _: Effect) {
+        queue!(self.buffer, style::Print(text))
+            .unwrap_or_else(quit_with_error("Could not write out text"));
+    }
+
+    fn can_scroll(&self) -> bool {
+        false
+    }
+
+    fn scroll(&mut self, _: isize) {}
+
+    fn refresh(&mut self) {
+        let _ = self.buffer.flush();
+        let mut buffer = Cursor::new(Vec::new());
+        std::mem::swap(&mut buffer, &mut self.buffer);
+        self.stdout
+            .write_all(&buffer.into_inner())
+            .unwrap_or_else(quit_with_error("Could not write to stdout"));
+        let _ = self.stdout.flush();
+    }
+
+    fn size(&mut self) -> (usize, usize) {
+        (0, 0)
+    }
+
+    fn clear(&mut self) {
+        self.buffer.get_mut().clear();
+    }
+}
+
+#[derive(Debug)]
 pub struct Cross {
     stdout: Stdout,
     buffer: Cursor<Vec<u8>>,
     prev_color: Option<CrossColor>,
     prev_bg: Option<CrossColor>,
     prev_effect: Option<style::Attributes>,
+    text_mode: bool,
 }
 
 impl Cross {
@@ -291,6 +342,7 @@ impl Cross {
             prev_color: None,
             prev_bg: None,
             prev_effect: None,
+            text_mode: false,
         }
     }
     /// init the crossterm backend, places the screen into raw mode and the alternative buffer
@@ -311,6 +363,13 @@ impl Cross {
             cursor::Hide,
         )
         .unwrap_or_else(quit_with_error("Could not initialize crossterm"));
+        ret
+    }
+    pub fn init_textmode() -> Self {
+        let mut ret = Self::new_uninit();
+        ret.prev_bg = Some(CrossColor::Black);
+        ret.prev_effect = Some(style::Attributes::default());
+        ret.text_mode = true;
         ret
     }
     /// uninitializes everything we initialized and goes back to the normal screen
@@ -338,6 +397,9 @@ pub fn quit_with_error<E: std::error::Error, Out>(premsg: &'static str) -> impl 
 
 impl Backend for Cross {
     fn set_line(&mut self, line: usize) {
+        if self.text_mode {
+            return;
+        }
         queue!(
             self.buffer,
             cursor::MoveTo(
@@ -351,6 +413,9 @@ impl Backend for Cross {
     }
 
     fn set_pos(&mut self, column: usize, line: usize) {
+        if self.text_mode {
+            return;
+        }
         queue!(
             self.buffer,
             cursor::MoveTo(
@@ -379,15 +444,27 @@ impl Backend for Cross {
         }
         let cross_color = color.to_cross();
         if Some(cross_color) != self.prev_color {
-            queue!(self.buffer, style::SetForegroundColor(cross_color),)
-                .unwrap_or_else(quit_with_error("Could not write out text"));
-            self.prev_color = Some(cross_color);
+            // in text mode we don't override the background color so we want
+            // to respect the user's default text color here
+            if self.text_mode && matches!(color, Color::HexSame) {
+                queue!(self.buffer, style::SetForegroundColor(CrossColor::Reset))
+                    .unwrap_or_else(quit_with_error("Could not write out text"))
+            } else {
+                queue!(self.buffer, style::SetForegroundColor(cross_color),)
+                    .unwrap_or_else(quit_with_error("Could not write out text"));
+            }
         }
+        self.prev_color = Some(cross_color);
         let bg_color = bg.to_cross();
         if Some(bg_color) != self.prev_bg {
-            queue!(self.buffer, style::SetBackgroundColor(bg_color),)
-                .unwrap_or_else(quit_with_error("Could not write out text"));
-            self.prev_bg = Some(bg_color);
+            if self.text_mode && matches!(bg, BackgroundColor::Blank) {
+                queue!(self.buffer, style::SetBackgroundColor(CrossColor::Reset))
+                    .unwrap_or_else(quit_with_error("Could not write out text"))
+            } else {
+                queue!(self.buffer, style::SetBackgroundColor(bg_color),)
+                    .unwrap_or_else(quit_with_error("Could not write out text"));
+                self.prev_bg = Some(bg_color);
+            }
         }
         queue!(self.buffer, style::Print(text))
             .unwrap_or_else(quit_with_error("Could not write out text"));
@@ -397,7 +474,7 @@ impl Backend for Cross {
         // this doesn't work on linux's native terminal and i would like to know
         // how to feature detect this (also, i'm pretty sure there are some other
         // scroll sequences that work there?) but for now just pretend it works
-        true
+        !self.text_mode
     }
 
     fn scroll(&mut self, amount: isize) {

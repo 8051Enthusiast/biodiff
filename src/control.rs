@@ -14,7 +14,7 @@ use std::{cell::Cell, rc::Rc, thread::scope};
 use crate::{
     align::{AlignInfo, CheckStatus},
     backend::{send_cross_actions, Action, Cross, Dummy},
-    config::{Config, Settings},
+    config::{get_settings, Settings},
     dialog::{self, continue_dialog, error_window},
     doublehex::DoubleHexContext,
     file::{FileContent, FileState},
@@ -32,12 +32,8 @@ pub type CursiveCallback = Box<dyn Fn(&mut Cursive, WrappedEvent) + 'static + Se
 /// when opening dialog boxes. This is done because initially, the cursive backend was too flickery.
 /// However, this was fixed by using cursive_buffered_backend, so now this is only a minor optimization.
 pub fn run(x: FileState, y: FileState) {
-    let mut settings = Config::from_config()
-        .map(Config::into_current_version)
-        .unwrap_or_default();
-    let digits = x.content.address_digits().max(y.content.address_digits());
-    settings.style.addr_width = digits;
-    settings.load_memory_warn_status();
+    let mut settings = get_settings();
+    settings.style.set_addr_size(&x.content, &y.content);
     let mut hv = HexView::new(x, y);
     let mut event = DelegateEvent::Continue;
     loop {

@@ -5,6 +5,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::{
     backend::{BackgroundColor, Color, Effect},
+    file::FileContent,
     selection::SelectionStatus,
 };
 pub const FRONT_PAD: &str = " ";
@@ -329,6 +330,12 @@ impl Style {
     fn size_per_byte(&self) -> usize {
         self.mode.size_per_byte() + self.ascii_col as usize + self.bars_col as usize
     }
+
+    pub fn set_addr_size(&mut self, x: &FileContent, y: &FileContent) {
+        let digits = x.address_digits().max(y.address_digits());
+        self.addr_width = digits;
+    }
+
     pub fn addr_size(&self) -> usize {
         self.addr_width as usize + 1
     }

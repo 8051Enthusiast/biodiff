@@ -8,6 +8,7 @@ mod dialog;
 mod doublehex;
 mod file;
 mod preset;
+mod print;
 mod search;
 mod selection;
 mod style;
@@ -17,8 +18,9 @@ use std::env;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::exit;
+use std::sync::Arc;
 
-use file::FileState;
+use file::{FileBytes, FileState};
 
 fn print_usage(name: &OsString) -> ! {
     eprintln!("usage: {} [file1] [file2]", name.to_string_lossy());
@@ -39,6 +41,21 @@ fn main() {
             }
         }
         [a, b] => (a, b),
+        [arg, a, b] if arg.to_string_lossy() == "--print" => {
+            print::print(
+                Arc::new(FileBytes::from_file(&PathBuf::from(a)).unwrap_or_else(|e| {
+                    eprintln!("Could not read {}: {}", a.to_string_lossy(), e);
+                    exit(1);
+                })),
+                Arc::new(FileBytes::from_file(&PathBuf::from(b)).unwrap_or_else(|e| {
+                    eprintln!("Could not read {}: {}", b.to_string_lossy(), e);
+                    exit(1);
+                })),
+                16,
+                false,
+            );
+            exit(0);
+        }
         _otherwise => print_usage(&args[0]),
     };
     let x = FileState::from_file(&PathBuf::from(xfile)).unwrap_or_else(|e| {

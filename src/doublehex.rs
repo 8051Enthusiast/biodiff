@@ -20,7 +20,7 @@ pub struct DoubleHexLine {
 }
 
 impl DoubleHexLine {
-    fn print_unimportant<B: Backend>(&self, printer: &mut B, text: &str) {
+    fn print_unimportant<B: Backend + ?Sized>(&self, printer: &mut B, text: &str) {
         printer.append_text(
             text,
             Color::Unimportant,
@@ -31,7 +31,7 @@ impl DoubleHexLine {
     /// Prints one side of the line
     fn print_half<B>(&self, printer: &mut B, line: usize, style: Style, first: bool)
     where
-        B: Backend,
+        B: Backend + ?Sized,
     {
         self.print_unimportant(printer, FRONT_PAD);
         let address = self.address[(!first) as usize];
@@ -82,7 +82,7 @@ impl DoubleHexLine {
     }
     /// Prints the DoubleHexLine using the given backend at the line given in `line`
     /// with the views being on the left and right
-    fn print_hor<B: Backend>(&self, printer: &mut B, line: usize, style: Style) {
+    pub fn print_hor<B: Backend + ?Sized>(&self, printer: &mut B, line: usize, style: Style) {
         printer.set_line(line);
         self.print_half(printer, line, style, true);
 
@@ -95,7 +95,7 @@ impl DoubleHexLine {
         self.print_half(printer, line, style, false);
     }
 
-    fn print_vert<B: Backend>(&self, printer: &mut B, lines: [usize; 2], style: Style) {
+    pub fn print_vert<B: Backend>(&self, printer: &mut B, lines: [usize; 2], style: Style) {
         printer.set_line(lines[0]);
         self.print_half(printer, lines[0], style, true);
 

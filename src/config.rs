@@ -223,3 +223,12 @@ impl Config {
         }
     }
 }
+
+
+pub fn get_settings() -> Settings {
+    let mut settings = Config::from_config()
+        .map(Config::into_current_version)
+        .unwrap_or_default();
+    settings.load_memory_warn_status();
+    settings
+}
