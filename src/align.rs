@@ -105,14 +105,18 @@ pub struct AlignAlgorithm {
 
 impl Default for AlignAlgorithm {
     fn default() -> Self {
+        #[cfg(feature = "wfa2")]
+        let backend = AlignBackend::Wfa2(Wfa2::default());
+        #[cfg(not(feature = "wfa2"))]
+        let backend = AlignBackend::RustBio(RustBio::default());
         AlignAlgorithm {
             name: "Default".to_string(),
             gap_open: -5,
             gap_extend: -1,
             mismatch_score: -1,
-            match_score: 1,
+            match_score: 0,
             mode: AlignMode::Blockwise(DEFAULT_BLOCKSIZE),
-            backend: AlignBackend::RustBio(RustBio::default()),
+            backend,
         }
     }
 }
