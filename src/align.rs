@@ -106,7 +106,7 @@ pub struct AlignAlgorithm {
 impl Default for AlignAlgorithm {
     fn default() -> Self {
         #[cfg(feature = "wfa2")]
-        let backend = AlignBackend::Wfa2(Wfa2::default());
+        let backend = AlignBackend::Wfa2(Wfa2);
         #[cfg(not(feature = "wfa2"))]
         let backend = AlignBackend::RustBio(RustBio::default());
         AlignAlgorithm {
