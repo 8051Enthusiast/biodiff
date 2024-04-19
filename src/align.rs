@@ -110,7 +110,7 @@ impl Default for AlignAlgorithm {
         #[cfg(not(feature = "wfa2"))]
         let backend = AlignBackend::RustBio(RustBio::default());
         AlignAlgorithm {
-            name: "Default".to_string(),
+            name: "default".to_string(),
             gap_open: -5,
             gap_extend: -1,
             mismatch_score: -1,
@@ -125,15 +125,6 @@ impl Default for AlignAlgorithm {
 pub struct AlignInfo {
     pub global: AlignAlgorithm,
     pub semiglobal: AlignAlgorithm,
-}
-
-impl Default for AlignInfo {
-    fn default() -> Self {
-        Self {
-            global: Default::default(),
-            semiglobal: AlignAlgorithm::default_semiglobal(),
-        }
-    }
 }
 
 impl AlignInfo {

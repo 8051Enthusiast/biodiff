@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::align::{AlgorithmKind, AlignAlgorithm, AlignInfo};
+use crate::align::{AlgorithmKind, AlignAlgorithm, AlignInfo, AlignMode};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct PresetCursor {
@@ -24,11 +24,15 @@ pub struct PresetList {
 
 impl Default for PresetList {
     fn default() -> Self {
-        let info = AlignInfo::default();
+        let blockwise = AlignAlgorithm::default();
+        let mut global = blockwise.clone();
+        global.name = "global".to_string();
+        global.mode = AlignMode::Global;
+        let default = AlignAlgorithm::default_semiglobal();
         PresetList {
-            global: vec![info.global],
+            global: vec![blockwise, global],
             current_global: 0,
-            semiglobal: vec![info.semiglobal],
+            semiglobal: vec![default],
             current_semiglobal: 0,
         }
     }
