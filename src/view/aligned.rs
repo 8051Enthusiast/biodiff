@@ -578,7 +578,10 @@ impl Aligned {
                 return;
             }
         };
-        self.process_move(printer, action);
+        match action {
+            Action::Refresh => self.refresh(printer),
+            _ => self.process_move(printer, action),
+        }
     }
     /// Turn an Aligned view into its part, including information on where it points
     pub fn destruct(self) -> Result<(FileState, FileState, DoubleHexContext), Self> {

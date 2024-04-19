@@ -355,7 +355,7 @@ fn delegate_action(action: Action) -> Option<DelegateEvent> {
         Action::Help => Some(DelegateEvent::OpenDialog(continue_dialog(
             dialog::help_window(dialog::MAIN_HELP),
         ))),
-        Action::Refresh => Some(DelegateEvent::Reload),
+        Action::Reload => Some(DelegateEvent::Reload),
         _otherwise => None,
     }
 }

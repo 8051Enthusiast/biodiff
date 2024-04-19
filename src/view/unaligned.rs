@@ -361,6 +361,7 @@ impl Unaligned {
                 self.dh.style.column_count = ColumnSetting::Fit;
                 self.refresh(printer);
             }
+            Action::Refresh => self.refresh(printer),
             otherwise => self.process_move(printer, otherwise),
         };
         DelegateEvent::Continue
