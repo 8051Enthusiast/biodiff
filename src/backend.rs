@@ -487,8 +487,10 @@ impl Backend for Cross {
     fn scroll(&mut self, amount: isize) {
         match amount {
             isize::MIN..=-1 => {
+                self.prev_effect = None;
                 queue!(
                     self.buffer,
+                    style::SetAttribute(style::Attribute::Reset),
                     terminal::ScrollDown(
                         u16::try_from(-amount)
                             .unwrap_or_else(quit_with_error("scroll out of range"))
@@ -497,8 +499,10 @@ impl Backend for Cross {
                 .unwrap_or_else(quit_with_error("Could not scroll"));
             }
             1..=isize::MAX => {
+                self.prev_effect = None;
                 queue!(
                     self.buffer,
+                    style::SetAttribute(style::Attribute::Reset),
                     terminal::ScrollUp(
                         u16::try_from(amount)
                             .unwrap_or_else(quit_with_error("scroll out of range"))
