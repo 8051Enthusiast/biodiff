@@ -1,12 +1,17 @@
-use std::{error::Error, fs::read_to_string, path::PathBuf};
+use std::{
+    error::Error,
+    fs::read_to_string,
+    path::{Path, PathBuf},
+};
 
 use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    align::{rustbio::RustBio, AlignAlgorithm, AlignBackend, AlignMode, Banded},
+    align::{rustbio::RustBio, AlgorithmKind, AlignAlgorithm, AlignBackend, AlignMode, Banded},
     preset::PresetList,
     style::{ColumnSetting, DisplayMode, Layout, Style},
+    Args,
 };
 
 fn config_path() -> Result<PathBuf, std::io::Error> {
@@ -198,9 +203,32 @@ pub enum Config {
 }
 
 impl Config {
-    pub fn from_config() -> Option<Self> {
-        let config = read_to_string(settings_file().ok()?).ok()?;
-        serde_json::from_str(&config).ok()
+    pub fn from_config(path: Option<&Path>) -> Result<Option<Self>, Box<dyn Error + 'static>> {
+        fn filter_file_not_found<T>(
+            r: Result<T, std::io::Error>,
+        ) -> Result<Option<T>, Box<dyn Error + 'static>> {
+            match r {
+                Ok(t) => Ok(Some(t)),
+                Err(e) => {
+                    if e.kind() == std::io::ErrorKind::NotFound {
+                        Ok(None)
+                    } else {
+                        Err(e.into())
+                    }
+                }
+            }
+        }
+        let Some(config_file) = (if let Some(p) = path {
+            Some(p.to_path_buf())
+        } else {
+            filter_file_not_found(settings_file())?
+        }) else {
+            return Ok(None);
+        };
+        let Some(config) = filter_file_not_found(read_to_string(config_file))? else {
+            return Ok(None);
+        };
+        Ok(serde_json::from_str(&config)?)
     }
 
     pub fn save_config(&self) -> Result<(), Box<dyn Error + 'static>> {
@@ -224,11 +252,31 @@ impl Config {
     }
 }
 
-
-pub fn get_settings() -> Settings {
-    let mut settings = Config::from_config()
+pub fn get_settings(args: &Args) -> Result<Settings, String> {
+    let mut settings = Config::from_config(args.config.as_deref())
+        .map_err(|e| format!("Error loading config: {}", e))?
         .map(Config::into_current_version)
         .unwrap_or_default();
+    if let Some(global) = &args.global_preset {
+        let cursor = settings.presets.find(AlgorithmKind::Global, global);
+        if cursor.preset.is_none() {
+            return Err(format!("No global preset named {}", global));
+        }
+        settings.presets.select(cursor);
+    }
+    if let Some(semiglobal) = &args.semiglobal_preset {
+        let cursor = settings.presets.find(AlgorithmKind::Semiglobal, semiglobal);
+        if cursor.preset.is_none() {
+            return Err(format!("No semiglobal preset named {}", semiglobal));
+        }
+        settings.presets.select(cursor);
+    }
+    if let Some(cols) = args.columns {
+        if cols == 0 {
+            return Err("Number of columns must be greater than 0".to_string());
+        }
+        settings.style.column_count = ColumnSetting::Fixed(cols);
+    }
     settings.load_memory_warn_status();
-    settings
+    Ok(settings)
 }

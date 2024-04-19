@@ -33,6 +33,11 @@ regex = "1.10.4"
 hexagex = { path = "hexagex", version = "0.2.2" }
 realfft = "3.3.0"
 
+[dependencies.clap]
+version = "4.5.4"
+default-features = false
+features = ["color", "help", "usage", "std", "derive"]
+
 [dependencies.biodiff-wfa2-sys]
 path = "biodiff-wfa2-sys"
 version = "2.3.4"

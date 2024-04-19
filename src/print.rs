@@ -1,22 +1,43 @@
-use std::sync::mpsc;
+use std::{io::IsTerminal, sync::mpsc};
 
 use crate::{
     align::AlignElement,
     backend::{Backend, BackgroundColor, Color, Cross, Effect, Plain},
-    config::get_settings,
+    config::Settings,
     doublehex::DoubleHexLine,
     file::FileContent,
     style::{ByteData, ColumnSetting},
     view::AlignedMessage,
 };
 
-pub fn print(x: FileContent, y: FileContent, cols: u16, plain: bool) {
+fn use_color(color_override: bool) -> bool {
+    if color_override {
+        return true;
+    }
+    if let Ok(nc) = std::env::var("NO_COLOR") {
+        if !nc.is_empty() {
+            return false;
+        }
+    }
+    let stdout = std::io::stdout();
+    if !stdout.is_terminal() {
+        return false;
+    }
+    true
+}
+
+pub fn print(mut settings: Settings, x: FileContent, y: FileContent, color: bool) {
+    let cols = if let ColumnSetting::Fixed(cols) = settings.style.column_count {
+        cols
+    } else {
+        16
+    };
+    let plain = !use_color(color);
     let backend = if plain {
         &mut Plain::new() as &mut dyn Backend
     } else {
         &mut Cross::init_textmode() as &mut dyn Backend
     };
-    let mut settings = get_settings();
     settings.style.set_addr_size(&x, &y);
     settings.style.column_count = ColumnSetting::Fixed(cols);
     let align_info = settings.presets.current_info();

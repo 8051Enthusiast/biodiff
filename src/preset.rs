@@ -91,6 +91,34 @@ impl PresetList {
         *current = (arr.len() as u32 - 1).min(*current);
         true
     }
+    /// finds the preset with the given name, returning a cursor
+    pub fn find(&self, kind: AlgorithmKind, name: &str) -> PresetCursor {
+        let arr = match kind {
+            AlgorithmKind::Global => &self.global,
+            AlgorithmKind::Semiglobal => &self.semiglobal,
+        };
+        let preset = arr.iter().position(|preset| preset.name == name);
+        PresetCursor {
+            preset: preset.map(|x| x as u32),
+            kind,
+        }
+    }
+    /// selects the preset at the cursor
+    pub fn select(&mut self, cursor: PresetCursor) {
+        let current = match cursor.kind {
+            AlgorithmKind::Global => &mut self.current_global,
+            AlgorithmKind::Semiglobal => &mut self.current_semiglobal,
+        };
+        let len = match cursor.kind {
+            AlgorithmKind::Global => self.global.len(),
+            AlgorithmKind::Semiglobal => self.semiglobal.len(),
+        };
+        if let Some(preset) = cursor.preset {
+            if preset < len as u32 {
+                *current = preset;
+            }
+        }
+    }
     /// sets the preset at the cursor, returning false if the name is
     /// already taken
     pub fn set(&mut self, cursor: PresetCursor, settings: AlignAlgorithm) -> bool {
