@@ -18,39 +18,30 @@ jobs:
             target: x86_64-unknown-linux-gnu
             suffix: "linux"
           - os: windows-latest
-            target: x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-gnu
             suffix: "windows"
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - uses: Swatinem/rust-cache@v2
       - run: |
-          cargo test --release
-          cargo build --release
+          cargo test --target="${{ matrix.target }}" --release
+          cargo build --target="${{ matrix.target }}" --release
       - run: |
           cargo install cargo-strip
-          cargo strip
-      - uses: actions/upload-artifact@v2
+          cargo strip --target="${{ matrix.target }}"
+      - uses: actions/upload-artifact@v4
         if: matrix.os != 'windows-latest'
         with:
           name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
           path: |
-            target/release/biodiff
-            target/release/git-biodiff
-      - uses: actions/upload-artifact@v2
+            target/${{ matrix.target }}/release/biodiff
+            target/${{ matrix.target }}/release/git-biodiff
+      - uses: actions/upload-artifact@v4
         if: matrix.os == 'windows-latest'
         with:
           name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
           path: |
-            target/release/biodiff.exe
-            target/release/git-biodiff.exe
+            target/${{ matrix.target }}/release/biodiff.exe
+            target/${{ matrix.target }}/release/git-biodiff.exe

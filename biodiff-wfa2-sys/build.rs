@@ -2,11 +2,15 @@ use std::path::PathBuf;
 
 #[cfg(feature = "bundle-wfa2")]
 fn link_wfa() {
-    let mut dst = cmake::build("WFA2-lib");
-    dst.push("lib");
+    // we have our own custom CMakeLists.txt which we use to replace
+    // the original
+    println!("cargo:rerun-if-changed=CMakeLists.txt");
+    let mut dst = cmake::Config::new(".").build_target("wfa2_static").build();
+    dst.push("build");
 
-    // The directory of the WFA libraries, added to the search path.
-    println!("cargo:rustc-link-search={}", dst.display());
+    // search for the static library in the build directory
+
+    println!("cargo:rustc-link-search=native={}", dst.display());
     // Link the `wfa-lib` library.
     println!("cargo:rustc-link-lib=static=wfa2");
 }
