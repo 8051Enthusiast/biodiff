@@ -2,6 +2,14 @@ use std::path::PathBuf;
 
 #[cfg(feature = "bundle-wfa2")]
 fn link_wfa() {
+    #[cfg(target_abi = "msvc")]
+    {
+        eprintln!(
+            "The WFA2 library is not compatible with MSVC.\n\
+            Please use the GNU toolchain (e.g. x86_64-pc-windows-gnu) to build the project."
+        );
+        std::process::exit(1);
+    }
     // we have our own custom CMakeLists.txt which we use to replace
     // the original
     println!("cargo:rerun-if-changed=CMakeLists.txt");
