@@ -51,3 +51,9 @@ features = ["crossterm-backend"]
 
 [profile.dev.package.bio]
 opt-level = 3
+
+[profile.dist]
+inherits = "release"
+lto = true
+strip = "symbols"
+codegen-units = 1

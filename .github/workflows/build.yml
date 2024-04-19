@@ -26,22 +26,19 @@ jobs:
           submodules: 'true'
       - uses: Swatinem/rust-cache@v2
       - run: |
-          cargo test --target="${{ matrix.target }}" --release
-          cargo build --target="${{ matrix.target }}" --release
-      - run: |
-          cargo install cargo-strip
-          cargo strip --target="${{ matrix.target }}"
+          cargo test --target="${{ matrix.target }}"
+          cargo build --target="${{ matrix.target }}" --profile=dist
       - uses: actions/upload-artifact@v4
         if: matrix.os != 'windows-latest'
         with:
           name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
           path: |
-            target/${{ matrix.target }}/release/biodiff
-            target/${{ matrix.target }}/release/git-biodiff
+            target/${{ matrix.target }}/dist/biodiff
+            target/${{ matrix.target }}/dist/git-biodiff
       - uses: actions/upload-artifact@v4
         if: matrix.os == 'windows-latest'
         with:
           name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
           path: |
-            target/${{ matrix.target }}/release/biodiff.exe
-            target/${{ matrix.target }}/release/git-biodiff.exe
+            target/${{ matrix.target }}/dist/biodiff.exe
+            target/${{ matrix.target }}/dist/git-biodiff.exe
