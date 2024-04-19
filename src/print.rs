@@ -1,11 +1,14 @@
-use std::{io::IsTerminal, sync::mpsc};
+use std::{
+    io::IsTerminal,
+    sync::{mpsc, Arc},
+};
 
 use crate::{
     align::AlignElement,
     backend::{Backend, BackgroundColor, Color, Cross, Effect, Plain},
     config::Settings,
     doublehex::DoubleHexLine,
-    file::FileContent,
+    file::{FileBytes, FileContent},
     style::{ByteData, ColumnSetting},
     view::AlignedMessage,
 };
@@ -26,44 +29,38 @@ fn use_color(color_override: bool) -> bool {
     true
 }
 
-pub fn print(mut settings: Settings, x: FileContent, y: FileContent, color: bool) {
-    let cols = if let ColumnSetting::Fixed(cols) = settings.style.column_count {
-        cols
-    } else {
-        16
-    };
-    let plain = !use_color(color);
-    let backend = if plain {
-        &mut Plain::new() as &mut dyn Backend
-    } else {
-        &mut Cross::init_textmode() as &mut dyn Backend
-    };
-    settings.style.set_addr_size(&x, &y);
-    settings.style.column_count = ColumnSetting::Fixed(cols);
-    let align_info = settings.presets.current_info();
-    let mut buf = Vec::new();
-    let (sender, receiver) = mpsc::channel();
-    align_info.start_align_with_selection([x, y], [None, None], [0, 0], sender);
-    let mut idx = 0;
+fn hex_line(buf: &[AlignElement], idx: usize, cols: u16) -> DoubleHexLine {
     let byte_data = |byte| ByteData {
         byte,
         is_search_result: false,
         is_selected: crate::selection::SelectionStatus::None,
     };
-    let new_line = |buf: &[AlignElement], idx: usize| {
-        let xaddr = buf[idx].xaddr;
-        let yaddr = buf[idx].yaddr;
-        let end = buf.len().min(idx + cols as usize);
-        let mut bytes: Vec<_> = buf[idx..end]
-            .iter()
-            .map(|x| (byte_data(x.xbyte), byte_data(x.ybyte)))
-            .collect();
-        bytes.resize_with(cols as usize, || (byte_data(None), byte_data(None)));
-        DoubleHexLine {
-            address: [Some(xaddr), Some(yaddr)],
-            bytes,
-        }
-    };
+    let xaddr = buf[idx].xaddr;
+    let yaddr = buf[idx].yaddr;
+    let end = buf.len().min(idx + cols as usize);
+    let mut bytes: Vec<_> = buf[idx..end]
+        .iter()
+        .map(|x| (byte_data(x.xbyte), byte_data(x.ybyte)))
+        .collect();
+    bytes.resize_with(cols as usize, || (byte_data(None), byte_data(None)));
+    DoubleHexLine {
+        address: [Some(xaddr), Some(yaddr)],
+        bytes,
+    }
+}
+
+fn print_impl<B: Backend>(
+    settings: Settings,
+    x: Arc<FileBytes>,
+    y: Arc<FileBytes>,
+    cols: u16,
+    backend: &mut B,
+) {
+    let align_info = settings.presets.current_info();
+    let mut buf = Vec::new();
+    let (sender, receiver) = mpsc::channel();
+    align_info.start_align_with_selection([x, y], [None, None], [0, 0], sender);
+    let mut idx = 0;
     for msg in receiver {
         let mut appendix = match msg {
             AlignedMessage::Initial(v, _) | AlignedMessage::Append(v) => v,
@@ -71,7 +68,7 @@ pub fn print(mut settings: Settings, x: FileContent, y: FileContent, color: bool
         };
         buf.append(&mut appendix);
         while idx + cols as usize <= buf.len() {
-            let line = new_line(&buf, idx);
+            let line = hex_line(&buf, idx, cols);
             line.print_hor(backend, 0, settings.style);
             backend.append_text(
                 "\n",
@@ -84,7 +81,7 @@ pub fn print(mut settings: Settings, x: FileContent, y: FileContent, color: bool
         }
     }
     if idx < buf.len() {
-        let line = new_line(&buf, idx);
+        let line = hex_line(&buf, idx, cols);
         line.print_hor(backend, 0, settings.style);
         backend.append_text(
             "\n",
@@ -94,4 +91,21 @@ pub fn print(mut settings: Settings, x: FileContent, y: FileContent, color: bool
         );
         backend.refresh();
     }
+}
+
+pub fn print(mut settings: Settings, x: FileContent, y: FileContent, color: bool) {
+    let cols = if let ColumnSetting::Fixed(cols) = settings.style.column_count {
+        cols
+    } else {
+        16
+    };
+    let plain = !use_color(color);
+    settings.style.set_addr_size(&x, &y);
+    settings.style.column_count = ColumnSetting::Fixed(cols);
+
+    if plain {
+        print_impl(settings, x, y, cols, &mut Plain::new());
+    } else {
+        print_impl(settings, x, y, cols, &mut Cross::init_textmode());
+    };
 }
