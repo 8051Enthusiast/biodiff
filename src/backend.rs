@@ -310,8 +310,8 @@ impl Backend for Plain {
         std::mem::swap(&mut buffer, &mut self.buffer);
         self.stdout
             .write_all(&buffer.into_inner())
-            .unwrap_or_else(quit_with_error("Could not write to stdout"));
-        let _ = self.stdout.flush();
+            .unwrap_or_else(quit_quiet_broken_pipe);
+        self.stdout.flush().unwrap_or_else(quit_quiet_broken_pipe);
     }
 
     fn size(&mut self) -> (usize, usize) {
@@ -393,6 +393,13 @@ pub fn quit_with_error<E: std::error::Error, Out>(premsg: &'static str) -> impl 
         eprintln!("{premsg}: {err}");
         std::process::exit(1)
     }
+}
+
+fn quit_quiet_broken_pipe(e: std::io::Error) {
+    if e.kind() == std::io::ErrorKind::BrokenPipe {
+        std::process::exit(1);
+    }
+    quit_with_error("Could not write to stdout")(e)
 }
 
 impl Backend for Cross {
@@ -509,8 +516,8 @@ impl Backend for Cross {
         std::mem::swap(&mut buffer, &mut self.buffer);
         self.stdout
             .write_all(&buffer.into_inner())
-            .unwrap_or_else(quit_with_error("Could not write to stdout"));
-        let _ = self.stdout.flush();
+            .unwrap_or_else(quit_quiet_broken_pipe);
+        self.stdout.flush().unwrap_or_else(quit_quiet_broken_pipe);
     }
 
     fn size(&mut self) -> (usize, usize) {
