@@ -29,7 +29,8 @@ fn use_color(color_override: bool) -> bool {
     true
 }
 
-fn hex_line(buf: &[AlignElement], idx: usize, cols: u16) -> DoubleHexLine {
+fn hex_line(buf: &[AlignElement], line_num: usize, cols: u16) -> DoubleHexLine {
+    let idx = line_num * cols as usize;
     let byte_data = |byte| ByteData {
         byte,
         is_search_result: false,
@@ -60,16 +61,16 @@ fn print_impl<B: Backend>(
     let mut buf = Vec::new();
     let (sender, receiver) = mpsc::channel();
     align_info.start_align_with_selection([x, y], [None, None], [0, 0], sender);
-    let mut idx = 0;
+    let mut line_num = 0;
     for msg in receiver {
         let mut appendix = match msg {
             AlignedMessage::Initial(v, _) | AlignedMessage::Append(v) => v,
             AlignedMessage::Prepend(_) | AlignedMessage::UserEvent(_) => continue,
         };
         buf.append(&mut appendix);
-        while idx + cols as usize <= buf.len() {
-            let line = hex_line(&buf, idx, cols);
-            line.print_hor(backend, 0, settings.style);
+        while (line_num + 1) * cols as usize <= buf.len() {
+            let line = hex_line(&buf, line_num, cols);
+            line.print_hor(backend, line_num, settings.style);
             backend.append_text(
                 "\n",
                 Color::HexSame,
@@ -77,11 +78,11 @@ fn print_impl<B: Backend>(
                 Effect::default(),
             );
             backend.refresh();
-            idx += cols as usize;
+            line_num += 1;
         }
     }
-    if idx < buf.len() {
-        let line = hex_line(&buf, idx, cols);
+    if (line_num * cols as usize) < buf.len() {
+        let line = hex_line(&buf, line_num, cols);
         line.print_hor(backend, 0, settings.style);
         backend.append_text(
             "\n",
