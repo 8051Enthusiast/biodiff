@@ -15,9 +15,6 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             suffix: "macos-x86_64"
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            suffix: "macos-aarch64"
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             suffix: "linux"
@@ -30,13 +27,23 @@ jobs:
           submodules: 'true'
       - uses: Swatinem/rust-cache@v2
       - run: |
-          rustup target add "${{ matrix.target }}"
-        if: matrix.target == 'aarch64-apple-darwin'
-      - run: |
           cargo test --target="${{ matrix.target }}"
           cargo build --target="${{ matrix.target }}" --profile=dist
+      - run: |
+          rustup target add "aarch64-apple-darwin"
+          cargo build --target="aarch64-apple-darwin" --profile=dist
+          lipo -create -output biodiff target/x86_64-apple-darwin/dist/biodiff target/aarch64-apple-darwin/dist/biodiff
+          lipo -create -output git-biodiff target/x86_64-apple-darwin/dist/git-biodiff target/aarch64-apple-darwin/dist/git-biodiff
+        if: matrix.target == 'x86_64-apple-darwin'
       - uses: actions/upload-artifact@v4
-        if: matrix.os != 'windows-latest'
+        if: matrix.os == 'macos-latest'
+        with:
+          name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
+          path: |
+            biodiff
+            git-biodiff
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
         with:
           name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
           path: |
@@ -49,28 +56,3 @@ jobs:
           path: |
             target/${{ matrix.target }}/dist/biodiff.exe
             target/${{ matrix.target }}/dist/git-biodiff.exe
-  macos_universal_binary:
-    name: Build Universal Binary
-    runs-on: macos-latest
-    needs: build
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: biodiff-macos-x86_64-${{ github.ref_name }}
-          path: x86_64
-      - uses: actions/download-artifact@v4
-        with:
-          name: biodiff-macos-aarch64-${{ github.ref_name }}
-          path: aarch64
-      - run: |
-          ls -l
-          lipo -create -output biodiff x86_64/biodiff aarch64/biodiff
-          lipo -create -output git-biodiff x86_64/git-biodiff aarch64/git-biodiff
-      - run: |
-          ./biodiff --version
-      - uses: actions/upload-artifact@v4
-        with:
-          name: 'biodiff-macos-${{ github.ref_name }}'
-          path: |
-            biodiff
-            git-biodiff
