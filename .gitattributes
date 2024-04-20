@@ -1,0 +1,2 @@
+# we don't want git to mangle our testcases
+/tests/**/*.txt binary
