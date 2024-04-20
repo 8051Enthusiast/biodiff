@@ -48,6 +48,7 @@ Installation
 If you're lucky, there will be a package available in your primary package manager, see the [repology page](https://repology.org/project/biodiff/versions).
 There should be downloadable binary files for some environments under the [releases page](https://github.com/8051Enthusiast/biodiff/releases).
 Alternatively, you can also install this using `cargo` by doing `cargo install biodiff`.
+You will need cmake and libclang installed for the `wfa2` feature to compile.
 Note that in case you use Windows, you need to use the `x86_64-unknown-linux-gnu` target if you want to have `wfa2` support.
 
 You can also execute directly using code from this repository by executing `cargo run --release -- file_a file_b`.
