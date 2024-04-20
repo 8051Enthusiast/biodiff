@@ -2,7 +2,7 @@
 name = "biodiff"
 description = "Compare binary files using sequence alignment"
 repository = "https://github.com/8051Enthusiast/biodiff"
-version = "1.1.0"
+version = "1.2.0"
 authors = ["8051Enthusiast <8051Enthusiast@protonmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -33,7 +33,7 @@ serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
 dirs = "5.0.1"
 regex = "1.10.4"
-hexagex = { path = "hexagex", version = "0.2.2" }
+hexagex = { path = "hexagex", version = "0.2.3" }
 realfft = "3.3.0"
 
 [dependencies.clap]
@@ -43,7 +43,7 @@ features = ["color", "help", "usage", "std", "derive"]
 
 [dependencies.biodiff-wfa2-sys]
 path = "biodiff-wfa2-sys"
-version = "2.3.4"
+version = "2.3.4-cf3eb92"
 default-features = false
 optional = true
 

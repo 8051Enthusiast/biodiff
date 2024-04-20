@@ -170,7 +170,7 @@ dependencies = [
 
 [[package]]
 name = "biodiff"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "bio",
  "biodiff-wfa2-sys",
@@ -190,7 +190,7 @@ dependencies = [
 
 [[package]]
 name = "biodiff-wfa2-sys"
-version = "2.3.4"
+version = "2.3.4-cf3eb92"
 dependencies = [
  "bindgen",
  "cmake",
@@ -723,7 +723,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hexagex"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "hex",
  "regex",

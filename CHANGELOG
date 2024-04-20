@@ -1,3 +1,18 @@
+1.2.0 (2024-04-20)
+==================
+* Add WFA2 as a new alignment algorithm
+* Add algorithm presets for saving multiple different algorithm settings and quickly switching between them
+* Add ability to reload files in unaligned mode
+* Add `--print` option to print the diff to stdout, and some more options
+* Disambiguate properly between global and semiglobal algorithms (latter are used for aligning one selected side to the whole other side)
+* Remove Local alignment option (old settings will be converted to Global)
+* Remove `mmap` support
+* Add warning on large alignment that may exhaust the memory
+* Change blockwise aligment to start with a block centered around the current cursor, instead of independently aligning in each direction
+* Change default style to use hex spacers
+* Fix global alignment not keeping the cursor position
+* Fix scrolling leaving a white trail on the right side on some terminals
+
 1.1.0 (2023-02-09)
 ==================
 * Make bytes per row adjustable
