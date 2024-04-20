@@ -11,7 +11,10 @@ pub struct Wfa2;
 #[cfg(feature = "wfa2")]
 mod implemented {
     use biodiff_wfa2_sys::*;
-    use std::{ffi::c_int, marker::PhantomData};
+    use std::{
+        ffi::{c_char, c_int},
+        marker::PhantomData,
+    };
 
     use crate::align::{Align, AlignAlgorithm, CheckStatus, InternalMode};
 
@@ -62,9 +65,9 @@ mod implemented {
             unsafe {
                 wavefront_align(
                     aligner,
-                    x.as_ptr() as *const i8,
+                    x.as_ptr() as *const c_char,
                     x.len() as c_int,
-                    y.as_ptr() as *const i8,
+                    y.as_ptr() as *const c_char,
                     y.len() as c_int,
                 )
             };
