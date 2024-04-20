@@ -93,7 +93,7 @@ impl Default for AlignAlgorithmV0 {
 impl From<AlignAlgorithmV0> for AlignAlgorithm {
     fn from(s: AlignAlgorithmV0) -> Self {
         AlignAlgorithm {
-            name: "Custom".to_string(),
+            name: "custom".to_string(),
             gap_open: s.gap_open,
             gap_extend: s.gap_extend,
             mismatch_score: s.mismatch_score,
