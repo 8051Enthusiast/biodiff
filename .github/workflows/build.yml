@@ -14,7 +14,10 @@ jobs:
         include:
           - os: macos-latest
             target: x86_64-apple-darwin
-            suffix: "macos"
+            suffix: "macos-x86_64"
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: "macos-aarch64"
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             suffix: "linux"
@@ -43,3 +46,28 @@ jobs:
           path: |
             target/${{ matrix.target }}/dist/biodiff.exe
             target/${{ matrix.target }}/dist/git-biodiff.exe
+  macos_universal_binary:
+    name: Build Universal Binary
+    runs-on: macos-latest
+    needs: build
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: biodiff-macos-x86_64-${{ github.ref_name }}
+          path: x86_64
+      - uses: actions/download-artifact@v4
+        with:
+          name: biodiff-macos-aarch64-${{ github.ref_name }}
+          path: aarch64
+      - run: |
+          ls -l
+          lipo -create -output biodiff x86_64/biodiff aarch64/biodiff
+          lipo -create -output git-biodiff x86_64/git-biodiff aarch64/git-biodiff
+      - run: |
+          ./biodiff --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 'biodiff-macos-${{ github.ref_name }}'
+          path: |
+            target/universal-apple-darwin/dist/biodiff
+            target/universal-apple-darwin/dist/git-biodiff
