@@ -1,0 +1,58 @@
+{
+  "version": "1",
+  "presets": {
+    "global": [
+      {
+        "name": "default",
+        "gap_open": -5,
+        "gap_extend": -1,
+        "mismatch_score": -1,
+        "match_score": 0,
+        "mode": {
+          "Blockwise": 8192
+        },
+        "backend": {
+          "backend": "wfa2"
+        }
+      },
+      {
+        "name": "global",
+        "gap_open": -5,
+        "gap_extend": -1,
+        "mismatch_score": -1,
+        "match_score": 0,
+        "mode": "Global",
+        "backend": {
+          "backend": "wfa2"
+        }
+      }
+    ],
+    "current_global": 0,
+    "semiglobal": [
+      {
+        "name": "default",
+        "gap_open": -5,
+        "gap_extend": -1,
+        "mismatch_score": -1,
+        "match_score": 0,
+        "mode": "Semiglobal",
+        "backend": {
+          "backend": "wfa2"
+        }
+      }
+    ],
+    "current_semiglobal": 0
+  },
+  "style": {
+    "mode": "Decimal",
+    "ascii_col": true,
+    "bars_col": true,
+    "layout": "Horizontal",
+    "spacer": true,
+    "right_to_left": true,
+    "column_count": {
+      "Fixed": 13
+    },
+    "no_scroll": false
+  }
+}

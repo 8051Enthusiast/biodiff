@@ -1,0 +1,1 @@
+{"algo":{"gap_open":-5,"gap_extend":-1,"mismatch_score":-1,"match_score":1,"mode":{"Blockwise":8192},"band":"Normal"},"style":{"mode":"HexAsciiMix","ascii_col":false,"bars_col":true,"vertical":false,"spacer":true,"right_to_left":false}}

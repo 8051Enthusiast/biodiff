@@ -1,0 +1,3 @@
+bin.name = "biodiff"
+args = ["--color", "--config", "tests/cmd/braille.json", "--print", "-gglobal", "tests/text_x.txt", "tests/text_y.txt"]
+status.code = 0

@@ -1,0 +1,3 @@
+bin.name = "biodiff"
+args = ["--color", "--columns=4", "--config", "tests/cmd/roman-rtl.json", "--print", "-gglobal", "tests/text_x.txt", "tests/text_y.txt"]
+status.code = 0

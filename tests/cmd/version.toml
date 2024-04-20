@@ -1,0 +1,7 @@
+bin.name = "biodiff"
+args = ["--version"]
+status.code = 0
+stdout = """
+biodiff 1.1.0
+"""
+stderr = ""

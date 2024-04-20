@@ -21,6 +21,9 @@ default = ["bundle-wfa2"]
 bundle-wfa2 = ["biodiff-wfa2-sys/bundle-wfa2", "wfa2"]
 wfa2 = ["dep:biodiff-wfa2-sys"]
 
+[dev-dependencies]
+trycmd = "0.15.1"
+
 [dependencies]
 bio = "1.6.0"
 crossterm = "0.25.0"

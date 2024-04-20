@@ -1,0 +1,4 @@
+This is some common text between both files.
+The character is Y instead of X.
+Some more text to make sure the number of same characters between the texts is sufficiently high.
+This text is only in this second file. Here is some more common text to wrap it up.
