@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 #[cfg(feature = "bundle-wfa2")]
 fn link_wfa() {
-    #[cfg(target_abi = "msvc")]
+    #[cfg(target_env = "msvc")]
     {
         eprintln!(
             "The WFA2 library is not compatible with MSVC.\n\
