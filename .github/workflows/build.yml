@@ -29,8 +29,21 @@ jobs:
       - run: |
           cargo test --target="${{ matrix.target }}"
           cargo build --target="${{ matrix.target }}" --profile=dist
+      - run: |
+          rustup target add "aarch64-apple-darwin"
+          cargo build --target="aarch64-apple-darwin" --profile=dist
+          lipo -create -output biodiff target/x86_64-apple-darwin/dist/biodiff target/aarch64-apple-darwin/dist/biodiff
+          lipo -create -output git-biodiff target/x86_64-apple-darwin/dist/git-biodiff target/aarch64-apple-darwin/dist/git-biodiff
+        if: matrix.target == 'x86_64-apple-darwin'
       - uses: actions/upload-artifact@v4
-        if: matrix.os != 'windows-latest'
+        if: matrix.os == 'macos-latest'
+        with:
+          name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
+          path: |
+            biodiff
+            git-biodiff
+      - uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
         with:
           name: 'biodiff-${{ matrix.suffix }}-${{ github.ref_name }}'
           path: |
