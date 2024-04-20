@@ -19,6 +19,9 @@ pub use self::rustbio::Banded;
 use self::rustbio::RustBio;
 use self::wfa2::Wfa2;
 
+#[cfg(feature = "wfa2")]
+pub const DEFAULT_BLOCKSIZE: usize = 32768;
+#[cfg(not(feature = "wfa2"))]
 pub const DEFAULT_BLOCKSIZE: usize = 8192;
 
 /// An align mode, can be either Local for local alignment, global for global alignment,
