@@ -69,5 +69,5 @@ jobs:
         with:
           name: 'biodiff-macos-${{ github.ref_name }}'
           path: |
-            target/universal-apple-darwin/dist/biodiff
-            target/universal-apple-darwin/dist/git-biodiff
+            biodiff
+            git-biodiff
