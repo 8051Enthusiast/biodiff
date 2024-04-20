@@ -14,7 +14,7 @@ This is a tool for binary diffing.
 
 The tool is able to show two binary files side by side so that similar places will be at the same position on both sides
 and bytes missing from one side are padded.
-It uses bio-informatics algorithms from the [`rust-bio`](https://rust-bio.github.io/) library (typically used for DNA sequence alignment) for that.
+It uses bio-informatics algorithms from the ['wfa2'](https://github.com/smarco/WFA2-lib) or [`rust-bio`](https://rust-bio.github.io/) library (typically used for DNA sequence alignment) for that.
 The dialog boxes for configuration are done using [`cursive`](https://github.com/gyscos/cursive).
 
 Features
@@ -34,11 +34,14 @@ Initially, the files will not be aligned and displayed without gaps on each side
 By moving the cursor and views to a place where the left side and right side are similar and pressing `F3` (or `3`), they can be aligned.
 This is done block by block in standard configuration, which means that bytes near the cursor are aligned first and further aligned blocks are displayed later on both sides.
 
-It is also possible to do global and local alignment (of the whole files at once) by changing the settings using `F4` (be sure to consult the help on the parameters).
-Generally, since it takes quadratic time and space, the global/local alignment will not work well for files bigger than 64kB.
+It is also possible to do global alignment (of the whole files at once) by changing the settings using `F4` (be sure to consult the help on the parameters).
+Generally, since it takes quadratic time and space, the global alignment will not work well for files bigger than 64kB.
 There is also a "banded" algorithm which is faster, but slightly less accurate.
 
-You can also select a region on one file and by pressing F3 the aligning algorithm will do a glocal alignment using the selected bytes as a pattern to find the corresponding bytes on the other file.
+You can also select a region on one file and by pressing F3 the aligning algorithm will do a semiglobal alignment using the selected bytes as a pattern to find the corresponding bytes on the other file.
+
+It is also possible to print the diff directly to the terminal by using `biodiff --print file_a file_b`.
+In that case (if the files are small enough for it not to take too long), you can add the `-gglobal` flag to do a global alignment (as opposed to a blockwise one, which is better suited for interactive use).
 
 Installation
 ------------
