@@ -139,6 +139,8 @@ impl From<StyleV0> for Style {
 pub struct ConfigV0 {
     pub algo: AlignAlgorithmV0,
     pub style: StyleV0,
+    #[serde(skip)]
+    pub save_path: Option<PathBuf>,
 }
 
 impl From<ConfigV0> for ConfigV1 {
@@ -152,6 +154,7 @@ impl From<ConfigV0> for ConfigV1 {
             presets,
             style: s.style.into(),
             no_memory_warn: false,
+            save_path: s.save_path,
         }
     }
 }
@@ -162,6 +165,8 @@ pub struct ConfigV1 {
     pub style: Style,
     #[serde(skip)]
     pub no_memory_warn: bool,
+    #[serde(skip)]
+    pub save_path: Option<PathBuf>,
 }
 
 impl ConfigV1 {
@@ -218,6 +223,13 @@ impl Config {
                 }
             }
         }
+        // if an explicit file path is given, we want to give an error
+        // if it doesn't actually exist instead of defaulting
+        if let Some(config_file) = path {
+            if !config_file.exists() {
+                return Err(format!("Config file {} not found", config_file.display()).into());
+            }
+        }
         let Some(config_file) = (if let Some(p) = path {
             Some(p.to_path_buf())
         } else {
@@ -225,22 +237,43 @@ impl Config {
         }) else {
             return Ok(None);
         };
-        let Some(config) = filter_file_not_found(read_to_string(config_file))? else {
+        let Some(config) = filter_file_not_found(read_to_string(&config_file))? else {
             return Ok(None);
         };
-        Ok(serde_json::from_str(&config)?)
+        let mut settings = serde_json::from_str(&config)?;
+        match &mut settings {
+            Some(Config::V0(t)) => t.save_path = Some(config_file),
+            Some(Config::Versioned(VersionedConfig::V1(t))) => t.save_path = Some(config_file),
+            None => {}
+        }
+        Ok(settings)
     }
 
     pub fn save_config(&self) -> Result<(), Box<dyn Error + 'static>> {
         let config = serde_json::to_string_pretty(self)?;
-        let r = std::fs::create_dir_all(config_path()?);
+        let save_path = match self {
+            Config::V0(s) => &s.save_path,
+            Config::Versioned(VersionedConfig::V1(s)) => &s.save_path,
+        };
+        let (dir, path) = if let Some(save_path) = save_path {
+            (
+                save_path
+                    .parent()
+                    .ok_or("No parent directory")?
+                    .to_path_buf(),
+                save_path.clone(),
+            )
+        } else {
+            (config_path()?, settings_file()?)
+        };
+        let r = std::fs::create_dir_all(dir);
         if let Err(ref e) = r {
             match e.kind() {
                 std::io::ErrorKind::AlreadyExists => (),
                 _ => r?,
             }
         }
-        std::fs::write(settings_file()?, config)?;
+        std::fs::write(path, config)?;
         Ok(())
     }
 
@@ -254,7 +287,7 @@ impl Config {
 
 pub fn get_settings(args: &Args) -> Result<Settings, String> {
     let mut settings = Config::from_config(args.config.as_deref())
-        .map_err(|e| format!("Error loading config: {}", e))?
+        .map_err(|e| e.to_string())?
         .map(Config::into_current_version)
         .unwrap_or_default();
     if let Some(global) = &args.global_preset {
