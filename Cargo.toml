@@ -2,7 +2,7 @@
 name = "biodiff"
 description = "Compare binary files using sequence alignment"
 repository = "https://github.com/8051Enthusiast/biodiff"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["8051Enthusiast <8051Enthusiast@protonmail.com>"]
 edition = "2021"
 license = "MIT"

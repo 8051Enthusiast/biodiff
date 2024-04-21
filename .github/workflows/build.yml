@@ -27,7 +27,7 @@ jobs:
           submodules: 'true'
       - uses: Swatinem/rust-cache@v2
       - run: |
-          cargo test --target="${{ matrix.target }}" --workspace
+          cargo test --target="${{ matrix.target }}" --workspace || exit 1
           cargo build --target="${{ matrix.target }}" --profile=dist
       - run: |
           rustup target add "aarch64-apple-darwin"

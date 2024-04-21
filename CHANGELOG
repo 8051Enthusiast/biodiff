@@ -1,3 +1,8 @@
+1.2.1 (2024-04-21)
+==================
+* Use pregenerated bindings for WFA2 instead of generating them at build time to avoid libclang dependency
+* Update WFA2-lib to 2.3.5
+
 1.2.0 (2024-04-20)
 ==================
 * Add WFA2 as a new alignment algorithm
