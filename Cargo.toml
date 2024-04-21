@@ -43,7 +43,7 @@ features = ["color", "help", "usage", "std", "derive"]
 
 [dependencies.biodiff-wfa2-sys]
 path = "biodiff-wfa2-sys"
-version = "2.3.4-cf3eb92"
+version = "2.3.5"
 default-features = false
 optional = true
 

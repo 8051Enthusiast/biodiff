@@ -1,16 +1,16 @@
 [package]
 name = "biodiff-wfa2-sys"
-version = "2.3.4-cf3eb92"
+version = "2.3.5"
 edition = "2021"
 description = "Rust bindings for the WFA2 library"
+repository = "https://github.com/8051Enthusiast/biodiff"
 license = "MIT"
-exclude = ["/WFA2-lib/img"]
+exclude = ["/WFA2-lib/img", "/WFA2-lib/tests"]
 links = "wfa2"
 
 [features]
 default = ["bundle-wfa2"]
-bundle-wfa2 = []
+bundle-wfa2 = ["cmake"]
 
 [build-dependencies]
-cmake = "0.1"
-bindgen = "0.69.4"
+cmake = { version = "0.1", optional = true }
