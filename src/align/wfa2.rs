@@ -14,8 +14,6 @@ mod implemented {
     use std::{
         ffi::{c_char, c_int},
         marker::PhantomData,
-        mem::MaybeUninit,
-        ptr::addr_of,
     };
 
     use crate::align::{Align, AlignAlgorithm, CheckStatus, InternalMode};
@@ -29,17 +27,7 @@ mod implemented {
         // note that wavefront_aligner_attr_t does not implement Copy because it contains timespec
         // which is blocklisted for bindgen, so we have to copy wavefront_aligner_attr_default manually
         // SAFETY: wavefront_aligner_attr_t should be a POD type and therefore trivially copyable
-        let mut attributes = unsafe {
-            let mut attributes: MaybeUninit<wavefront_aligner_attr_t> = MaybeUninit::uninit();
-            std::ptr::copy(
-                addr_of!(wavefront_aligner_attr_default),
-                &mut attributes as *mut MaybeUninit<wavefront_aligner_attr_t>
-                    as *mut wavefront_aligner_attr_t,
-                1,
-            );
-            attributes.assume_init()
-        };
-
+        let mut attributes = unsafe { wavefront_aligner_attr_default };
         attributes.heuristic.strategy = wf_heuristic_strategy_wf_heuristic_none;
         attributes.alignment_scope = alignment_scope_t_compute_alignment;
 

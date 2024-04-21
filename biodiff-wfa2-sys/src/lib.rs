@@ -238,6 +238,7 @@ fn bindgen_test_layout_profiler_counter_t() {
     );
 }
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct profiler_timer_t {
     pub begin_timer: timespec,
     pub time_ns: profiler_counter_t,
@@ -1524,6 +1525,7 @@ fn bindgen_test_layout_alignment_form_t() {
     );
 }
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct alignment_system_t {
     pub max_alignment_steps: ::std::os::raw::c_int,
     pub probe_interval_global: ::std::os::raw::c_int,
@@ -1679,6 +1681,7 @@ pub const wavefront_memory_t_wavefront_memory_low: wavefront_memory_t = 2;
 pub const wavefront_memory_t_wavefront_memory_ultralow: wavefront_memory_t = 3;
 pub type wavefront_memory_t = ::std::os::raw::c_uint;
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct wavefront_aligner_attr_t {
     pub distance_metric: distance_metric_t,
     pub alignment_scope: alignment_scope_t,
