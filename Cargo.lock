@@ -170,7 +170,6 @@ name = "biodiff-wfa2-sys"
 version = "2.3.5"
 dependencies = [
  "cmake",
- "libc",
 ]
 
 [[package]]
