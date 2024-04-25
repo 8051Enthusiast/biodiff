@@ -24,9 +24,6 @@ mod implemented {
         mode: InternalMode,
         text_len: usize,
     ) -> wavefront_aligner_attr_t {
-        // note that wavefront_aligner_attr_t does not implement Copy because it contains timespec
-        // which is blocklisted for bindgen, so we have to copy wavefront_aligner_attr_default manually
-        // SAFETY: wavefront_aligner_attr_t should be a POD type and therefore trivially copyable
         let mut attributes = unsafe { wavefront_aligner_attr_default };
         attributes.heuristic.strategy = wf_heuristic_strategy_wf_heuristic_none;
         attributes.alignment_scope = alignment_scope_t_compute_alignment;
