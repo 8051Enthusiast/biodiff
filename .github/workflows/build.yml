@@ -31,6 +31,7 @@ jobs:
           cargo build --target="${{ matrix.target }}" --profile=dist
       - run: |
           rustup target add "aarch64-apple-darwin"
+          rustup target add "x86_64-apple-darwin"
           cargo build --target="aarch64-apple-darwin" --profile=dist
           lipo -create -output biodiff target/x86_64-apple-darwin/dist/biodiff target/aarch64-apple-darwin/dist/biodiff
           lipo -create -output git-biodiff target/x86_64-apple-darwin/dist/git-biodiff target/aarch64-apple-darwin/dist/git-biodiff
