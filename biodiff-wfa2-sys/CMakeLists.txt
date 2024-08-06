@@ -4,19 +4,6 @@ project(wfa2lib)
 set(CMAKE_CXX_STANDARD 17)
 set(WFA2_PATH WFA2-lib)
 
-include(FeatureSummary)
-
-#find_package(PkgConfig REQUIRED)
-
-feature_summary(
-  FATAL_ON_MISSING_REQUIRED_PACKAGES
-  WHAT REQUIRED_PACKAGES_NOT_FOUND)
-
-# ---- Dependencies
-
-find_package(Threads)
-set_package_properties(Threads PROPERTIES TYPE REQUIRED)
-
 # ---- Build switches
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
@@ -93,10 +80,6 @@ add_library(wfa2::wfa2_static ALIAS wfa2_static)
 file (STRINGS ${WFA2_PATH}/VERSION.txt BUILD_NUMBER)
 add_compile_definitions(WFA2LIB_VERSION="${BUILD_NUMBER}")
 add_compile_definitions(VERSION="${BUILD_NUMBER}")
-
-set(wfa2lib_LIBS)
-
-# add_dependencies(wfa2lib ${wfa2lib_DEPS})
 
 # ---- Build all
 

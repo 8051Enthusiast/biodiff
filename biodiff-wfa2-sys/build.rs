@@ -5,8 +5,8 @@ fn link_wfa() {
     // we have our own custom CMakeLists.txt which we use to replace
     // the original
     println!("cargo:rerun-if-changed=CMakeLists.txt");
-    let mut dst = cmake::Config::new(".").build_target("wfa2_static").build();
-    dst.push("build");
+    let mut dst = cmake::Config::new(".").build();
+    dst.push("lib");
 
     // search for the static library in the build directory
 
