@@ -46,6 +46,12 @@ impl std::ops::Deref for FileBytes {
     }
 }
 
+impl AsRef<[u8]> for FileBytes {
+    fn as_ref(&self) -> &[u8] {
+        &self.content
+    }
+}
+
 /// The bytes of a file along with its filename and an index pointing at a byte of the file
 #[derive(Debug)]
 pub struct FileState {

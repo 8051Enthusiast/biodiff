@@ -4,7 +4,6 @@ use std::{
 };
 
 use crate::{
-    align::AlignElement,
     backend::{Backend, BackgroundColor, Color, Cross, Effect, Plain},
     config::Settings,
     doublehex::DoubleHexLine,
@@ -12,6 +11,7 @@ use crate::{
     style::{ByteData, ColumnSetting},
     view::AlignedMessage,
 };
+use biodiff_align::AlignElement;
 
 fn use_color(color_override: bool) -> bool {
     if color_override {
@@ -60,7 +60,9 @@ fn print_impl<B: Backend>(
     let align_info = settings.presets.current_info();
     let mut buf = Vec::new();
     let (sender, receiver) = mpsc::channel();
-    align_info.start_align_with_selection([x, y], [None, None], [0, 0], sender);
+    align_info.start_align_with_selection([x, y], [None, None], [0, 0], move |r| {
+        sender.send(r.into()).is_ok()
+    });
     let mut line_num = 0;
     for msg in receiver {
         let mut appendix = match msg {

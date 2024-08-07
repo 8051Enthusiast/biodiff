@@ -1,10 +1,9 @@
-use cursive::{direction::Direction, event::Event};
-
 use crate::{
-    align::AlgorithmKind,
     config::Settings,
     preset::{PresetCursor, PresetList},
 };
+use biodiff_align::AlgorithmKind;
+use cursive::{direction::Direction, event::Event};
 
 use super::*;
 

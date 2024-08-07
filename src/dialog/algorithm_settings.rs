@@ -1,11 +1,8 @@
-use crate::{
-    align::{
-        rustbio::{RustBio, DEFAULT_KMER, DEFAULT_WINDOW},
-        wfa2::{Wfa2, WFA2_AVAILABLE},
-        AlgorithmKind, AlignBackend,
-    },
-    config::Settings,
-    preset::PresetCursor,
+use crate::{config::Settings, preset::PresetCursor};
+use biodiff_align::{
+    rustbio::{RustBio, DEFAULT_KMER, DEFAULT_WINDOW},
+    wfa2::{Wfa2, WFA2_AVAILABLE},
+    AlgorithmKind, AlignBackend, CheckStatus,
 };
 
 use self::algorithm_presets::refresh_presets;
@@ -30,18 +27,8 @@ fn apply_rustbio(siv: &mut Cursive, algo: &mut AlignAlgorithm, errors: &mut Stri
     algo.backend = AlignBackend::RustBio(rustbio);
 }
 
-fn apply_wfa2(_: &mut Cursive, algo: &mut AlignAlgorithm, errors: &mut String) {
-    let wfa2 = Wfa2;
-    algo.backend = AlignBackend::Wfa2(wfa2);
-    if algo.mode == AlignMode::Semiglobal && algo.match_score != 0 {
-        errors.push_str("WFA2 does not support semiglobal alignment with non-zero match score\n");
-    }
-    if algo.mismatch_score >= 0 {
-        errors.push_str("WFA2 mismatch score must be negative");
-    }
-    if algo.gap_extend == 0 {
-        errors.push_str("WFA2 gap extend score must not be zero");
-    }
+fn apply_wfa2(_: &mut Cursive, algo: &mut AlignAlgorithm, _: &mut String) {
+    algo.backend = AlignBackend::Wfa2(Wfa2);
 }
 
 /// Reads the algorithm settings from the algorithm dialog box and applies it
@@ -75,18 +62,8 @@ fn apply_algorithm(
 
     // read common variables
     parse_box(siv, "name", &mut algorithm.name, &mut errors);
-    if algorithm.name.is_empty() {
-        errors.push_str("name is invalid: must not be empty\n");
-    }
-
     parse_box(siv, "gap open", &mut algorithm.gap_open, &mut errors);
-    if algorithm.gap_open > 0 {
-        errors.push_str("gap open is invalid: must not be positive\n");
-    }
     parse_box(siv, "gap extend", &mut algorithm.gap_extend, &mut errors);
-    if algorithm.gap_extend > 0 {
-        errors.push_str("gap extend is invalid: must not be positive\n");
-    }
     parse_box(
         siv,
         "mismatch score",
@@ -99,6 +76,9 @@ fn apply_algorithm(
         "rustbio" => apply_rustbio(siv, &mut algorithm, &mut errors),
         "wfa2" => apply_wfa2(siv, &mut algorithm, &mut errors),
         _ => errors.push_str("Unknown backend selected\n"),
+    }
+    if let CheckStatus::Error(e) = algorithm.check_parameters([0; 2]) {
+        errors.push_str(&e);
     }
     if !errors.is_empty() {
         siv.add_layer(

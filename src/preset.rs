@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::align::{AlgorithmKind, AlignAlgorithm, AlignInfo, AlignMode};
+use biodiff_align::{AlgorithmKind, AlignAlgorithm, AlignInfo, AlignMode};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct PresetCursor {

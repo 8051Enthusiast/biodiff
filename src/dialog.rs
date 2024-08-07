@@ -7,10 +7,7 @@ mod settings;
 mod style_settings;
 
 use crate::{
-    align::{
-        AlignAlgorithm, AlignMode, Banded, FlatAlignProgressMessage, FlatAlignmentContext,
-        DEFAULT_BLOCKSIZE,
-    },
+    align::{FlatAlignProgressMessage, FlatAlignmentContext},
     backend::Dummy,
     config::{Config, ConfigV1},
     control::{CursiveCallback, DelegateEvent, WrappedEvent},
@@ -20,6 +17,8 @@ use crate::{
     util::{self, Finalable},
     view::{Aligned, Unaligned},
 };
+
+use biodiff_align::{AlignAlgorithm, AlignMode, Banded, DEFAULT_BLOCKSIZE};
 use cursive::{
     event::Key,
     theme::{PaletteColor, StyleType},

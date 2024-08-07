@@ -8,11 +8,12 @@ use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    align::{rustbio::RustBio, AlgorithmKind, AlignAlgorithm, AlignBackend, AlignMode, Banded},
     preset::PresetList,
     style::{ColumnSetting, DisplayMode, Layout, Style},
     Args,
 };
+use biodiff_align::rustbio::{Banded, RustBio};
+use biodiff_align::{AlgorithmKind, AlignAlgorithm, AlignBackend, AlignMode};
 
 fn config_path() -> Result<PathBuf, std::io::Error> {
     match std::env::var_os("BIODIFF_CONFIG_DIR") {

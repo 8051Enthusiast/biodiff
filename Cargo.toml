@@ -13,19 +13,18 @@ default-run = "biodiff"
 [workspace]
 members = [
 	"hexagex",
-	"biodiff-wfa2-sys",
+	"biodiff-wfa2-sys", "biodiff-align",
 ]
 
 [features]
 default = ["bundle-wfa2"]
-bundle-wfa2 = ["biodiff-wfa2-sys/bundle-wfa2", "wfa2"]
-wfa2 = ["dep:biodiff-wfa2-sys"]
+bundle-wfa2 = ["biodiff-align/bundle-wfa2", "wfa2"]
+wfa2 = ["biodiff-align/wfa2"]
 
 [dev-dependencies]
 trycmd = "0.15.1"
 
 [dependencies]
-bio = "1.6.0"
 crossterm = "0.25.0"
 cursive_buffered_backend = "0.6.1"
 unicode-width = "0.1.11"
@@ -41,11 +40,11 @@ version = "4.5.4"
 default-features = false
 features = ["color", "help", "usage", "std", "derive"]
 
-[dependencies.biodiff-wfa2-sys]
-path = "biodiff-wfa2-sys"
-version = "2.3.5"
+[dependencies.biodiff-align]
+path = "biodiff-align"
+version = "1.2.1-preview"
 default-features = false
-optional = true
+features = ["bundle-wfa2", "bio"]
 
 [dependencies.cursive]
 version = "0.20.0"

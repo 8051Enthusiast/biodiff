@@ -3,7 +3,6 @@ use std::{array::from_fn, ops::Range, sync::mpsc::Sender};
 use cursive::{Vec2, View};
 
 use crate::{
-    align::{AlignElement, AlignInfo},
     backend::{Action, Backend, Cursiv},
     cursor::{CursorActive, Move},
     datastruct::{DoubleVec, SignedArray},
@@ -13,6 +12,7 @@ use crate::{
     selection::Selections,
     style::{ByteData, ColumnSetting},
 };
+use biodiff_align::{AlignElement, AlignInfo};
 
 use super::next_difference;
 /// Enum that containts events but also allows
@@ -27,6 +27,16 @@ pub enum AlignedMessage {
 impl From<Action> for AlignedMessage {
     fn from(action: Action) -> Self {
         AlignedMessage::UserEvent(action)
+    }
+}
+
+impl From<biodiff_align::AlignedMessage> for AlignedMessage {
+    fn from(action: biodiff_align::AlignedMessage) -> Self {
+        match action {
+            biodiff_align::AlignedMessage::Initial(vec, addr) => AlignedMessage::Initial(vec, addr),
+            biodiff_align::AlignedMessage::Append(vec) => AlignedMessage::Append(vec),
+            biodiff_align::AlignedMessage::Prepend(vec) => AlignedMessage::Prepend(vec),
+        }
     }
 }
 
@@ -62,7 +72,7 @@ impl Aligned {
             [first_arc, second_arc],
             sel,
             [first.index, second.index],
-            sender,
+            move |r| sender.send(r.into()).is_ok(),
         );
         Aligned {
             data,

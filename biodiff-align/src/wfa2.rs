@@ -5,6 +5,7 @@ pub const WFA2_AVAILABLE: bool = true;
 #[cfg(not(feature = "wfa2"))]
 pub const WFA2_AVAILABLE: bool = false;
 
+/// The WFA2 aligner, without any extra options.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct Wfa2;
 
@@ -16,7 +17,7 @@ mod implemented {
         marker::PhantomData,
     };
 
-    use crate::align::{Align, AlignAlgorithm, CheckStatus, InternalMode};
+    use crate::{Align, AlignAlgorithm, AlignMode, CheckStatus, InternalMode, Op};
 
     use super::Wfa2;
     fn settings(
@@ -94,23 +95,17 @@ mod implemented {
     const SIZE_LIMIT: u64 = 1 << 30;
 
     impl Align for Wfa2 {
-        fn align(
-            &self,
-            algo: &AlignAlgorithm,
-            mode: InternalMode,
-            x: &[u8],
-            y: &[u8],
-        ) -> Vec<bio::alignment::AlignmentOperation> {
+        fn align(&self, algo: &AlignAlgorithm, mode: InternalMode, x: &[u8], y: &[u8]) -> Vec<Op> {
             let mut align_attr = settings(algo, mode, y.len());
             let aligner = Aligner::new(&mut align_attr, x, y);
             let mut ret = vec![];
             let slice = unsafe { aligner.ops() };
             for &c in slice {
                 match c {
-                    b'M' => ret.push(bio::alignment::AlignmentOperation::Match),
-                    b'I' => ret.push(bio::alignment::AlignmentOperation::Del),
-                    b'D' => ret.push(bio::alignment::AlignmentOperation::Ins),
-                    b'X' => ret.push(bio::alignment::AlignmentOperation::Subst),
+                    b'M' => ret.push(Op::Match),
+                    b'I' => ret.push(Op::Del),
+                    b'D' => ret.push(Op::Ins),
+                    b'X' => ret.push(Op::Subst),
                     _ => panic!("unknown cigar operation: {c:x}"),
                 }
             }
@@ -119,11 +114,29 @@ mod implemented {
 
         fn check_params(
             &self,
-            _: &AlignAlgorithm,
+            algo: &AlignAlgorithm,
             mode: InternalMode,
             x_size: usize,
             y_size: usize,
         ) -> CheckStatus {
+            let mut errors = String::new();
+            if algo.mode == AlignMode::Semiglobal && algo.match_score != 0 {
+                errors.push_str(
+                    "WFA2 does not support semiglobal alignment with non-zero match score\n",
+                );
+            }
+            if algo.mismatch_score >= 0 {
+                errors.push_str("WFA2 mismatch score must be negative\n");
+            }
+            if algo.gap_extend == 0 {
+                errors.push_str("WFA2 gap extend score must not be zero\n");
+            }
+            if !errors.is_empty() {
+                if errors.ends_with('\n') {
+                    errors.pop();
+                }
+                return CheckStatus::Error(errors);
+            }
             // for global alignment, we use biwfa, but we use regular wfa which uses quadratic memory
             if matches!(mode, InternalMode::Semiglobal)
                 && x_size as u64 * y_size as u64 > SIZE_LIMIT
@@ -137,23 +150,23 @@ mod implemented {
 
 #[cfg(not(feature = "wfa2"))]
 mod unimplemented {
-    use crate::align::{Align, CheckStatus};
+    use crate::{Align, CheckStatus, Op};
 
     impl Align for super::Wfa2 {
         fn align(
             &self,
-            _algo: &crate::align::AlignAlgorithm,
-            _mode: crate::align::InternalMode,
+            _algo: &crate::AlignAlgorithm,
+            _mode: crate::InternalMode,
             _x: &[u8],
             _y: &[u8],
-        ) -> Vec<bio::alignment::AlignmentOperation> {
+        ) -> Vec<Op> {
             unimplemented!()
         }
 
         fn check_params(
             &self,
-            _algo: &crate::align::AlignAlgorithm,
-            _mode: crate::align::InternalMode,
+            _algo: &crate::AlignAlgorithm,
+            _mode: crate::InternalMode,
             _x_size: usize,
             _y_size: usize,
         ) -> CheckStatus {

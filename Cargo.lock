@@ -149,8 +149,7 @@ dependencies = [
 name = "biodiff"
 version = "1.2.1"
 dependencies = [
- "bio",
- "biodiff-wfa2-sys",
+ "biodiff-align",
  "clap",
  "crossterm",
  "cursive",
@@ -163,6 +162,15 @@ dependencies = [
  "serde_json",
  "trycmd",
  "unicode-width",
+]
+
+[[package]]
+name = "biodiff-align"
+version = "1.2.1-preview"
+dependencies = [
+ "bio",
+ "biodiff-wfa2-sys",
+ "serde",
 ]
 
 [[package]]

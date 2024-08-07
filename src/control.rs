@@ -12,7 +12,6 @@ use cursive_buffered_backend::BufferedBackend;
 use std::{cell::Cell, rc::Rc, thread::scope};
 
 use crate::{
-    align::{AlignInfo, CheckStatus},
     backend::{send_cross_actions, Action, Cross, Dummy},
     config::Settings,
     dialog::{self, continue_dialog, error_window},
@@ -20,6 +19,7 @@ use crate::{
     file::{FileContent, FileState},
     view::{self, Aligned, AlignedMessage},
 };
+use biodiff_align::{AlignInfo, CheckStatus};
 use std::{
     ops::Range,
     sync::mpsc::{channel, Receiver, Sender},
@@ -204,7 +204,7 @@ impl HexView {
             if matches!(event, DelegateEvent::SwitchToAlign) {
                 let align_info = settings.presets.current_info();
                 let selection = view.selection();
-                match align_info.check_start_align(view.files(), selection) {
+                match align_info.check_parameters(view.files().map(|x| x.len()), selection) {
                     CheckStatus::Ok => {}
                     CheckStatus::MemoryWarning => {
                         if !settings.no_memory_warn {
