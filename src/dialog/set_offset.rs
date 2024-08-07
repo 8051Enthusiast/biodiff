@@ -118,6 +118,7 @@ impl FlatAlignmentProgress {
 /// the alignment process sends back messages of two kinds:
 ///  * incomplete messages, which include the current progress (from 0 to 256)
 ///  * an complete message, which is the last message and contains the result offset
+///
 ///  this callback either updates the progress bar or applies the result to the
 ///  unaligned hexview
 fn aligned_callback(

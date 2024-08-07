@@ -248,6 +248,7 @@ impl AlignInfo {
     /// * If exactly one side is selected, the selected side is aligned semiglobally
     ///   and then the global algorithm is used to extend in both directions.
     /// * If both or no sides are selected, the files are aligned globally
+    ///
     /// `addr` represents the current position of the cursor, where alignment starts.
     /// `sender` should return false if the alignment should be stopped.
     pub fn start_align_with_selection<FileContent: AsRef<[u8]> + Send + Sync + 'static>(
@@ -290,7 +291,7 @@ impl AlignInfo {
         let (select, side) = selection;
         let full_pattern = (*files[side.as_index()]).as_ref();
         let pattern = &(*files[side.as_index()]).as_ref()[select.clone()];
-        let text = &(*files[side.other().as_index()]).as_ref()[..];
+        let text = (*files[side.other().as_index()]).as_ref();
         let alignment = self
             .semiglobal
             .align([pattern, text], InternalMode::Semiglobal);
@@ -377,7 +378,7 @@ impl AlignAlgorithm {
     ) -> Vec<AlignElement> {
         let [x, y] = as_byte_arrays(&files);
         let alignment = self.align([x, y], InternalMode::Global);
-        AlignElement::from_array(&alignment, x.as_ref(), y.as_ref(), 0, 0).0
+        AlignElement::from_array(&alignment, x, y, 0, 0).0
     }
     /// This function starts the threads for the alignment, which send the data over the sender.
     /// It should then immediately return.
@@ -449,10 +450,8 @@ impl AlignAlgorithm {
             AlignElement::from_array(&aligned, x, y, xaddr - before, yaddr - before);
         let (Ok(xcursor) | Err(xcursor)) =
             right_biased_binary_search(&aligned_ops, &xaddr, |lhs, rhs| lhs.cmp(&rhs.xaddr));
-        let xcursor = xcursor as usize;
         let (Ok(ycursor) | Err(ycursor)) =
             right_biased_binary_search(&aligned_ops, &xaddr, |lhs, rhs| lhs.cmp(&rhs.yaddr));
-        let ycursor = ycursor as usize;
         let middle = (xcursor + ycursor) / 2;
         // keep half of the block size in each direction, but if the cursors are
         // not included, extend it to keep them so that the view still knows where
@@ -508,7 +507,7 @@ impl AlignAlgorithm {
             if ops.is_empty() {
                 break;
             }
-            let (end, new_xaddr, new_yaddr) = AlignElement::from_array(ops, &x, &y, xaddr, yaddr);
+            let (end, new_xaddr, new_yaddr) = AlignElement::from_array(ops, x, y, xaddr, yaddr);
             if !sender(AlignedMessage::Append(end)) {
                 return;
             }
@@ -522,7 +521,7 @@ impl AlignAlgorithm {
         } else {
             return;
         };
-        let leftover = AlignElement::from_array(&[clip], &x, &y, xaddr, yaddr).0;
+        let leftover = AlignElement::from_array(&[clip], x, y, xaddr, yaddr).0;
         let _ = sender(AlignedMessage::Append(leftover));
     }
     /// Blockwise alignment in the descending address direction.
@@ -545,7 +544,7 @@ impl AlignAlgorithm {
             // unlike in align_end, we create the Alignelement from the whole array and then cut it
             // in half. This is because the addresses returned from from_array are at the end, which
             // we already know, so we instead take the start addresses from the array itself
-            let (end, _, _) = AlignElement::from_array(&aligned, &x, &y, lower_xaddr, lower_yaddr);
+            let (end, _, _) = AlignElement::from_array(&aligned, x, y, lower_xaddr, lower_yaddr);
             let real_end = Vec::from(&end[end.len().saturating_sub(block_size / 2)..end.len()]);
             // if this is empty, we will not progress, so send the leftover out and quit after that
             if real_end.is_empty() {
@@ -565,7 +564,7 @@ impl AlignAlgorithm {
         } else {
             return;
         };
-        let leftover = AlignElement::from_array(&[clip], &x, &y, 0, 0).0;
+        let leftover = AlignElement::from_array(&[clip], x, y, 0, 0).0;
         let _ = sender(AlignedMessage::Prepend(leftover));
     }
 }
